@@ -52,15 +52,17 @@ packages (see `docs/offline-update-packages.md`).
 
 ### 1.4 Packages that get installed (for prior approval)
 
-| Family | Packages |
-|---|---|
-| Debian / Ubuntu | `python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git openssh-client` |
-| RHEL 9 | `python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git openssh-clients` (+ `policycoreutils-python-utils`, best effort) |
-| SUSE 15 | `python311 python311-pip nginx openssl curl ca-certificates sudo git openssh` |
+| Family | Required | Optional (best effort) |
+|---|---|---|
+| Debian / Ubuntu | `python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git` | `openssh-client` |
+| RHEL 9 | `python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git` | `openssh-clients`, `policycoreutils-python-utils` |
+| SUSE 15 | `python311 python311-pip nginx openssl curl ca-certificates sudo git` | `openssh` |
 
 Only what is missing is installed. `git` records the installed tree so update
-packages can roll back; `openssh-client` provides `ssh-keygen`, used to verify
-release-trust signatures.
+packages can roll back. The optional SSH package provides `ssh-keygen`, used
+only by the opt-in release-trust check; every bundle ships it, but when it
+cannot be installed (for example a SUSE image whose FIPS pattern pins another
+openssh) the installer warns and carries on.
 
 ### 1.5 What the base image must already provide
 

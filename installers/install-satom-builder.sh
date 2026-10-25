@@ -241,9 +241,18 @@ done
 # entry is the Python the family needs: RHEL 9's python3 is 3.9, so python3.11;
 # SUSE 15's is 3.6, so python311. python3 is never assumed.
 case "$PKG_MGR" in
-    apt)        REQUIRED_PKGS=(python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git openssh-client) ;;
-    dnf|yum)    REQUIRED_PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git openssh-clients) ;;
-    zypper)     REQUIRED_PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git openssh) ;;
+    apt)        REQUIRED_PKGS=(python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git) ;;
+    dnf|yum)    REQUIRED_PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git) ;;
+    zypper)     REQUIRED_PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git) ;;
+esac
+# Best effort: ssh-keygen verifies release-trust signatures, an OPT-IN check.
+# Every bundle ships it, but its closure can conflict with what a target image
+# already pins (openSUSE: patterns-base-fips vs the bundle's openssh-clients,
+# found by installing offline), so a failure here is a warning, never a stop.
+case "$PKG_MGR" in
+    apt)        OPTIONAL_PKGS=(openssh-client) ;;
+    dnf|yum)    OPTIONAL_PKGS=(openssh-clients) ;;
+    zypper)     OPTIONAL_PKGS=(openssh) ;;
 esac
 
 pkg_installed() {
@@ -372,19 +381,27 @@ bundle_install_debs() {
         return 0
     fi
     echo "bundle debs selected:" >>"$INSTALL_LOG"; echo "$list" >>"$INSTALL_LOG"
-    # apt, given the FILES, resolves and orders them itself -- including
-    # Pre-Depends, which a single `dpkg -i` of the whole list does not honour
-    # (alphabetical: python3-minimal before python3.11-minimal fails on a bare
-    # image, found by installing offline on one). --no-download: the bundle is
-    # the only source. NEVER `apt-get -f install` as a fallback: with no network
-    # it "fixes" a half-installed set by REMOVING it.
-    # shellcheck disable=SC2086
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-download --no-install-recommends \
-        -o Dpkg::Options::=--force-confold $list >>"$INSTALL_LOG" 2>&1 && return 0
-    echo "apt-get could not install the bundle's files; two dpkg passes" >>"$INSTALL_LOG"
-    # shellcheck disable=SC2086
-    dpkg -i $list >>"$INSTALL_LOG" 2>&1 || dpkg -i $list >>"$INSTALL_LOG" 2>&1
-    dpkg --configure -a >>"$INSTALL_LOG" 2>&1
+    # Several `dpkg -i` passes. One pass over the whole closure does not honour
+    # Pre-Depends (it goes alphabetically: python3-minimal before
+    # python3.11-minimal fails on a bare image); what failed for a
+    # pre-dependency installs on the next pass. Found by installing offline on
+    # a bare Debian 12. NOT apt with the file list (it answered "Pathname to
+    # install is not absolute" for an absolute path), and NEVER
+    # `apt-get -f install`: with no network it "fixes" a half-installed set by
+    # REMOVING it.
+    local pass left
+    for pass in 1 2 3 4 5; do
+        echo "bundle debs: dpkg pass ${pass}" >>"$INSTALL_LOG"
+        # shellcheck disable=SC2086
+        DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold $list >>"$INSTALL_LOG" 2>&1 && break
+        left="$(bundle_select_debs)"
+        [ -n "$left" ] || break
+        [ "$left" = "$list" ] && break        # no progress: stop, report below
+        list="$left"
+    done
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a >>"$INSTALL_LOG" 2>&1 || true
+    left="$(bundle_select_debs)"
+    [ -z "$left" ] || { echo "bundle debs NOT installed:" >>"$INSTALL_LOG"; echo "$left" >>"$INSTALL_LOG"; return 1; }
 }
 _suse_bundle_repo() {  # prints a temp dir holding a repos.d with ONLY the bundle
     local zr; zr="$(mktemp -d)"
@@ -400,7 +417,7 @@ keeppackages=0
 ZREPO
     echo "$zr"
 }
-bundle_install() {
+bundle_install() {   # bundle_install PKG... (Debian: the whole selected closure)
     if [ -d "$BUNDLE_DIR/debs" ]; then
         bundle_install_debs
     elif [ -d "$BUNDLE_DIR/rpms-suse" ]; then
@@ -410,7 +427,7 @@ bundle_install() {
         zypper --non-interactive --no-gpg-checks \
                --reposd-dir "$zr/repos.d" --cache-dir "$zr/cache" \
                install --no-recommends --auto-agree-with-licenses \
-               "${REQUIRED_PKGS[@]}" >>"$INSTALL_LOG" 2>&1 || { rm -rf "$zr"; return 1; }
+               "$@" >>"$INSTALL_LOG" 2>&1 || { rm -rf "$zr"; return 1; }
         rm -rf "$zr"
     else
         # bundle/rpms is a local dnf repo (repodata generated at build time).
@@ -418,7 +435,7 @@ bundle_install() {
             --repofrompath="satom-builder-bundle,file://$BUNDLE_DIR/rpms" \
             --setopt=satom-builder-bundle.gpgcheck=0 \
             --setopt=install_weak_deps=False --allowerasing \
-            install "${REQUIRED_PKGS[@]}" >>"$INSTALL_LOG" 2>&1 || return 1
+            install "$@" >>"$INSTALL_LOG" 2>&1 || return 1
         "$PKG_MGR" -y --disablerepo='*' \
             --repofrompath="satom-builder-bundle,file://$BUNDLE_DIR/rpms" \
             --setopt=satom-builder-bundle.gpgcheck=0 \
@@ -845,7 +862,7 @@ say "Summary: IP=${NODE_IP}  port=${WEB_PORT}  names=${SERVED_NAMES}  code=${COD
 if [ "$DRY_RUN" -eq 1 ]; then
     echo ""
     echo "DRY RUN -- this is what would be done (nothing was changed):"
-    echo "  packages : ${REQUIRED_PKGS[*]} ($( [ $OFFLINE -eq 1 ] && echo 'from the bundle' || echo "from the ${PKG_MGR} mirrors" ))"
+    echo "  packages : ${REQUIRED_PKGS[*]} + optional ${OPTIONAL_PKGS[*]} ($( [ $OFFLINE -eq 1 ] && echo 'from the bundle' || echo "from the ${PKG_MGR} mirrors" ))"
     echo "  account  : ${APP_USER} (system, nologin); tree ${APP_DIR}; venv ${APP_DIR}/venv"
     echo "  config   : ${APP_DIR}/.env (root:${APP_USER} 0640), publisher key ${PUBLISHER_KEY}"
     echo "  units    : satom-builder.service (gunicorn ${BIND}), satom-builder-updater.{path,service}"
@@ -868,7 +885,7 @@ done
 if [ ${#MISSING[@]} -gt 0 ]; then
     if [ $OFFLINE -eq 1 ]; then
         say "Installing from the offline bundle (${#MISSING[@]} package(s) + dependencies)"
-        bundle_install || die "Failed installing the bundle's packages (check $INSTALL_LOG)"
+        bundle_install "${MISSING[@]}" || die "Failed installing the bundle's packages (check $INSTALL_LOG)"
     else
         say "Installing from the mirrors (${PKG_MGR})"
         pkg_install "${MISSING[@]}" || die "Package installation failed (check $INSTALL_LOG)"
@@ -878,6 +895,13 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 else
     ok "All required packages are already present"
 fi
+for p in "${OPTIONAL_PKGS[@]}"; do
+    pkg_installed "$p" && { ok "$p $(pkg_version "$p") (optional)"; continue; }
+    if [ $OFFLINE -eq 1 ]; then bundle_install "$p" >/dev/null 2>&1 || true
+    else pkg_install "$p" || true; fi
+    if pkg_installed "$p"; then ok "$p installed (optional)"
+    else warn "$p could not be installed (optional): release-trust signature checks need ssh-keygen; install it later from your distribution"; fi
+done
 
 # -----------------------------------------------------------------------------
 # STEP 3 -- PYTHON, ACCOUNT, CODE, VENV
