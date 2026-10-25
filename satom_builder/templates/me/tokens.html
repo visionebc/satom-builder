@@ -4,7 +4,7 @@
 {% block content %}
 <div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-key me-2"></i>My SATOM tokens</h1></div>
 <div class="fw-card"><div class="fw-card-body">
-  <p>Everything the Builder does in a SATOM runs with <strong>your own</strong> SATOM API token, so it carries your RBAC and your ADOM, and SATOM's audit log names you. Create the token in SATOM (Profile › API tokens). Scopes: <span class="sb-mono">read</span> to see the target, <span class="sb-mono">write</span> to validate and rehearse, <span class="sb-mono">admin</span> (as a super-admin) to import and to register the publisher key.</p>
+  <p>Everything the Builder does in a SATOM runs with <strong>your own</strong> SATOM API token, so it carries your RBAC and your ADOM, and SATOM's audit log names you. A SATOM administrator with <em>users.manage</em> creates it under <strong>Administrator → API Tokens</strong> with you as its owner (it is shown once). Scopes: <span class="sb-mono">read</span> to see the target, <span class="sb-mono">write</span> to validate and rehearse, <span class="sb-mono">admin</span> (as a super-admin) to import and to register the publisher key.</p>
   <p class="sb-help mb-0">Tokens are encrypted at rest and never shown again: this page only says whether one is set.</p>
 </div></div>
 {% if not rows %}

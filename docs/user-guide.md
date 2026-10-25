@@ -94,7 +94,7 @@ Generation needs the target's rules pack: if it is missing or was made for anoth
 
 ## 6. My tokens
 
-Everything the Builder does in a SATOM runs with **your own SATOM API token**, so it carries your RBAC and your ADOM and SATOM's audit log names you. Create the token in SATOM (*Profile › API tokens*), then paste it on **My tokens** next to the target.
+Everything the Builder does in a SATOM runs with **your own SATOM API token**, so it carries your RBAC and your ADOM and SATOM's audit log names you. Create the token in SATOM: an administrator with the *users.manage* permission creates it under **Administrator → API Tokens** and picks you as its owner (the token is shown once). Then paste it on **My tokens** next to the target.
 
 | Scope | Allows |
 |---|---|
