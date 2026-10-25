@@ -8,7 +8,9 @@
   <meta name="csrf-token" content="{{ csrf_value }}">
   <meta name="csp-nonce" content="{{ csp_nonce }}">
   <title>{% block title %}SATOM Builder{% endblock %}</title>
-  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   {# Everything is vendored (static/vendor/MANIFEST.json): an offline install
      renders exactly like an online one. #}
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
@@ -26,7 +28,7 @@
     <i class="bi bi-list"></i>
   </button>
   <a href="{{ url_for('projects.index') }}" class="fw-topbar-brand">
-    <span class="sb-mark"><i class="bi bi-boxes"></i></span>
+    <span class="sb-brand"><img src="{{ url_for('static', filename='vendor/satom/satom-mark.png') }}" alt="SATOM"><span class="sb-brand-badge"><i class="bi bi-boxes"></i></span></span>
     <span>SATOM Builder</span>
   </a>
   <div class="fw-topbar-spacer"></div>

@@ -53,6 +53,17 @@
       "files": {
         "satom/fortiweb.css": "9cbf46bc28d98d92cc6deffde1638103b72727237e360d7a96ab477be5025455"
       }
+    },
+    {
+      "name": "SATOM emblem (satom-mark.png)",
+      "version": "SATOM 4.1.0",
+      "license": "Proprietary, Vision EBC (same owner as SATOM Builder)",
+      "homepage": "visionebc/SATOM",
+      "source": "visionebc/SATOM app/static/img/satom-mark.png, last changed in commit 3c9d47a7",
+      "origin": "byte-identical. The Builder's brand is this emblem with the Builder's orange badge drawn over its corner by css/builder.css (.sb-brand); the file itself is never edited. img/favicon.svg and img/favicon.png embed SATOM's 64px favicon.png with the same badge.",
+      "files": {
+        "satom/satom-mark.png": "8276ec733762c0cba02bbba4c7760cbbcb1a3461273d683d5581c474d3e9a42b"
+      }
     }
   ]
 }

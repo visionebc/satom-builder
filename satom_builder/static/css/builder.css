@@ -49,10 +49,15 @@
 .fw-main a:not(.btn):hover { color: #9E3112; }
 .fw-topbar-brand, .fw-topbar-brand:hover { color: var(--fw-topbar-text, #fff); text-decoration: none; }
 
-.sb-mark {
-  width: 28px; height: 28px; border-radius: 6px; display: inline-flex;
-  align-items: center; justify-content: center; background: var(--fw-accent);
-  color: #fff; font-size: 16px; flex-shrink: 0;
+/* Brand: SATOM's own emblem (vendor/satom/satom-mark.png, byte-identical) with
+   the Builder's orange badge over its lower right corner. */
+.sb-brand { position: relative; width: 32px; height: 32px; display: inline-block; flex-shrink: 0; }
+.sb-brand img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sb-brand-badge {
+  position: absolute; right: -4px; bottom: -3px; width: 17px; height: 17px;
+  border-radius: 5px; background: var(--fw-accent); color: #fff; font-size: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 2px #fff;
 }
 
 .sb-footer {
@@ -82,7 +87,8 @@
 .sb-login-wrap { max-width: 420px; margin: 8vh auto; padding: 20px; }
 .sb-login-card { background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.18); overflow: hidden; }
 .sb-login-head { background: var(--fw-topbar-bg); padding: 28px 32px; text-align: center; color: #fff; }
-.sb-login-head .sb-mark { width: 56px; height: 56px; font-size: 30px; border-radius: 12px; margin-bottom: 12px; }
+.sb-login-head .sb-brand { width: 76px; height: 76px; margin-bottom: 12px; }
+.sb-login-head .sb-brand-badge { width: 30px; height: 30px; font-size: 17px; border-radius: 8px; right: -6px; bottom: -4px; }
 .sb-login-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
 .sb-login-head p { margin: 0; color: var(--fw-sidebar-text); font-size: 13px; }
 .sb-login-body { padding: 28px 32px; }
