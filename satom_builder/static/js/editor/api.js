@@ -65,4 +65,11 @@ export class Api {
     return this.req("POST", `/api/projects/${id}/generate`, { profile_id: profileId, prompt, max_rounds: maxRounds });
   }
   job(jobId) { return this.req("GET", `/api/jobs/${encodeURIComponent(jobId)}`); }
+  testdata(id) { return this.req("GET", `/api/projects/${id}/testdata`); }
+  saveTestdata(id, data) { return this.req("PUT", `/api/projects/${id}/testdata`, { data }); }
+  generateTestdata(id, opts) { return this.req("POST", `/api/projects/${id}/testdata/generate`, opts || {}); }
+  testRun(id, body) { return this.req("POST", `/api/projects/${id}/test-runs`, body); }
+  testRuns(id) { return this.req("GET", `/api/projects/${id}/test-runs`); }
+  testRunGet(runId) { return this.req("GET", `/api/test-runs/${encodeURIComponent(runId)}`); }
+  keepRun(runId) { return this.req("POST", `/api/test-runs/${encodeURIComponent(runId)}/keep`, {}); }
 }

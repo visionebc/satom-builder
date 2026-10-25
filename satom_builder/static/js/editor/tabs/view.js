@@ -179,9 +179,11 @@ export const preview = {
         } else say(m, r.error || "The target did not render the plugin.", "bad");
       } catch (e) { say(m, e.message, "bad"); }
     });
+    const local = button("Render with test data", { class: "btn btn-sm btn-fw-outline", id: "pv-local" }, "bi-database-check");
+    local.addEventListener("click", () => ctx.activate("testrun"));
     panel.appendChild(card("Preview", [
-      h("p", { class: "ed-help", text: "Saves, then asks the target SATOM to render the plugin (Rehearse) and shows the HTML in a sandboxed frame (scripts only: no same-origin access, no forms, no popups)." }),
-      defs.length ? bar : null, h("div", { class: "ed-inline" }, run, msg), probs, frame], { icon: "bi-eye" }));
+      h("p", { class: "ed-help", text: "Saves, then asks the target SATOM to render the plugin (Rehearse) with the target's datasets and shows the HTML in a sandboxed frame (scripts only: no same-origin access, no forms, no popups). To render with your own test data, here on the Builder, use Test run." }),
+      defs.length ? bar : null, h("div", { class: "ed-inline" }, run, local, msg), probs, frame], { icon: "bi-eye" }));
   },
   reveal() {},
   run() { const b = document.getElementById("pv-run"); if (b) b.click(); },

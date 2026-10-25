@@ -57,7 +57,7 @@ export default {
     if (!scripts.length) nav.appendChild(empty("No script. A diagram's Run a script step can also run a script the target already has."));
     const main = scripts.length ? scriptEditor(ctx, scripts[S.sel], S.sel, scripts, () => this.render(ctx, panel)) : null;
     panel.appendChild(h("div", { class: "ed-scripts" },
-      h("div", { class: "ed-scripts-main" }, card("Scripts", [h("div", { class: "ed-scripts-cols" }, nav, main || h("div"))], { icon: "bi-filetype-py", tools: add })),
+      h("div", { class: "ed-scripts-main" }, card("Scripts", [h("div", { class: "ed-scripts-cols" }, nav, main || h("div"))], { icon: "bi-filetype-py", tools: h("span", { class: "ed-row-tools" }, scripts.length ? testBtn(ctx, scripts[S.sel]) : null, add) })),
       sdkCard()));
   },
 
@@ -73,6 +73,12 @@ export default {
     else if (t.sub === "settings") flash(document.getElementById("sc-settings"));
   },
 };
+
+function testBtn(ctx, sc) {
+  const b = button("Run on test data", { class: "btn btn-sm btn-fw-outline", id: "sc-test" }, "bi-play-btn");
+  b.addEventListener("click", () => ctx.testScript(sc.slug));
+  return b;
+}
 
 function scriptEditor(ctx, sc, i, scripts, rerender) {
   const schema = ctx.schema;
