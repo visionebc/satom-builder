@@ -160,6 +160,11 @@ VIEW_JINJA_NOTES = [
     "Declare every dataset the body reads.",
     "Address objects (fortigate_firewall_address) hold `subnet` as 'IP MASK' "
     "('192.0.2.5 255.255.255.255'); compare with (a.subnet or '').split(' ')[0].",
+    "A {% set %} inside a {% for %} does NOT change the variable outside that loop (Jinja "
+    "scoping): anything collected across loop iterations goes in a namespace "
+    "({% set ns.names = ns.names + [a.name] %}), including lists built in nested loops.",
+    "Rows carry `device` (the appliance's name) and `appliance_id`; there is no `adom` column: "
+    "the ADOM is the dataset's product (every fortigate_* row is ADOM fortigate).",
     "Close every {% if %}/{% for %} and every parenthesis; keep expressions short.",
 ]
 
