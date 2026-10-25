@@ -3,13 +3,15 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.2] - 2026-10-25
+## [0.1.3] - 2026-10-25
 
-Fixes found by the first end-to-end runs against a live SATOM and a local
-model. (0.1.1 was a lab build, never published.)
+Fixes found by the first end-to-end runs against a live SATOM, a local model
+and a real browser. (0.1.1 and 0.1.2 were lab builds, never published.)
 
 ### Fixed
 
+- **The editor reads a stored check from its result.** A project whose last
+  check had passed showed a red "Last check: 0 problem(s)" badge.
 - **A view's or widget's AI request carries only what a view can use**
   (datasets, parameter types, name patterns, limits), as compact JSON. With
   the whole app schema a view's request was about 27,000 tokens, past a
