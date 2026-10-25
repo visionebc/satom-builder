@@ -239,3 +239,28 @@ The web app writes requests and reads statuses only. `satom-builder-updater.path
   - `SATOM_BUILDER_PUBLISHER_KEY=/etc/satom-builder/publisher/publisher_ed25519.key`;
   - `SATOM_BUILDER_BIND=127.0.0.1:8100`.
 - **Version:** `VERSION` at the repo root, X.Y.Z, read by the app.
+
+## 11. Builder internal JSON API (web UI ⇄ backend, same repo)
+
+The editor front-end (templates and JS) talks to the backend only through these routes:
+- They use the session cookie and require the header `X-CSRF-Token`, whose value comes from `<meta name="csrf-token">`.
+- They return JSON.
+- Errors come back as `{"error": "<code>", "message": "..."}`.
+
+| Route | Body → Answer |
+|---|---|
+| `GET /api/projects/<id>` | → `{"id","name","kind":"view|widget|app","slug","version","icon","description","target_id","files":{"body.jinja","style.css","script.js"},"datasets":[],"params":[],"app":{...app.json body: app, stores, connections, apis, scripts...},"assets":[{"name","sha256","size"}],"updated_at","last_check":{...}|null}` |
+| `PUT /api/projects/<id>` | The same shape; every key is optional and replaces that key. → the saved project plus `"local_check"`, the `check()` result, or `null` when no rules pack is available |
+| `POST /api/projects/<id>/assets` | Multipart `file` (an image). → `{"name","sha256"}` |
+| `GET /api/targets/<id>/schema` | → `schema` (contract §3.2) from the cached target snapshot |
+| `GET /api/targets/<id>/snapshot` | → the target snapshot (§2), cached; `?refresh=1` refetches it |
+| `POST /api/projects/<id>/check` | → local `check()` result, from the rules pack in a subprocess |
+| `POST /api/projects/<id>/validate-remote` | → SATOM `/validate` answer |
+| `POST /api/projects/<id>/rehearse` | `{"inputs":{},"answers":"yes|no|stop"}` → SATOM `/rehearse` answer |
+| `POST /api/projects/<id>/import` | `{"allow_downgrade":false,"secrets":{}}` → SATOM `/import` answer. The secrets are relayed and never stored. |
+| `GET /api/projects/<id>/package` | → the signed `.satomplugin` file (attachment) |
+| `POST /api/projects/<id>/generate/preview` | `{"profile_id","prompt"}` → `{"system": str, "user": str, "bytes": int, "sends": ["author guide", "schema", "draft", "your text"], "never_sends": ["data rows", "secrets"]}` |
+| `POST /api/projects/<id>/generate` | `{"profile_id","prompt","max_rounds":3}` → `{"job_id"}` |
+| `GET /api/jobs/<job_id>` | → `{"status":"running|done|failed","rounds":[{"n","ok","problems":[...],"at"}],"error":"","project":{...}|null}` |
+
+The base layout is `satom_builder/templates/base.html`, owned by the core, with the blocks `title`, `head`, `content` and `scripts`. Editor pages extend it.
