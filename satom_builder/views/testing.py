@@ -209,7 +209,12 @@ def testdata_import(pid):
         else:
             keys = _keys(proj, defs, builtin, current)
             stores = list(testdata.store_defs(proj, snap))
-        with targets.client(conn, t, g.user.id) as c:
+        # the project's ADOM (contract section 17); a table added by hand may be
+        # of any ADOM the token reaches, so it is read in Global when it can be
+        adom = targets.call_adom(snap)
+        if add is not None and adom:
+            adom = targets.GLOBAL
+        with targets.client(conn, t, g.user.id, adom=adom) as c:
             answer = c.data(datasets=keys, stores=stores, limit=limit)
         if add is not None:
             answer = dict(answer, sources={})          # adding a table keeps the lists

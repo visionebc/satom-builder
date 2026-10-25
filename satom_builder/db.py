@@ -223,6 +223,19 @@ MIGRATIONS: list[list[str]] = [
             created_at REAL NOT NULL)""",
         "CREATE INDEX IF NOT EXISTS job_turns_thread ON job_turns(thread, created_at)",
     ],
+    # 8 -- the ADOM of a call (contract section 17): a target snapshot depends on
+    # the ADOM it was asked in, so the cache is per (target, author, ADOM); ''
+    # is the token's own ADOM. A cache: the old rows are simply dropped.
+    [
+        "DROP TABLE IF EXISTS snapshots",
+        """CREATE TABLE IF NOT EXISTS snapshots (
+            target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            adom TEXT NOT NULL DEFAULT '',
+            fetched_at REAL NOT NULL,
+            data TEXT NOT NULL,
+            PRIMARY KEY (target_id, user_id, adom))""",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

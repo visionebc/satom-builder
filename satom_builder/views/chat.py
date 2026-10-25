@@ -241,7 +241,7 @@ def chat_send(cid):
     try:
         prof = get_profile(conn, prof_id)
         adapter = adapter_for(prof)
-        t, snap = targets.context_for_project(conn, row, g.user)
+        t, snap = targets.context_for_project(conn, row, g.user, purpose="generate")
         pack = targets.rules_pack(conn, t, g.user.id, snap)
     except Exception as exc:  # noqa: BLE001
         return _fail(exc)

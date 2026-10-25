@@ -7,6 +7,7 @@ import * as M from "./model.js";
 import { clone, deepEqual } from "./util.js";
 import { resolveTarget, tabsFor } from "./where.js";
 import { computeChoices } from "./choices.js";
+import { installAdom, badgeOf, adomLabel, GLOBAL } from "./adom.js";
 import { renderActivity, liveLine } from "./activity.js";
 import * as F from "./fields.js";
 import formTab from "./tabs/form.js";
@@ -70,6 +71,57 @@ function boot() {
     }
   };
   ctx.ensureSaved = async () => (M.isDirty(ctx.project, ctx.saved) || rawTab.pending() ? save() : true);
+  /* The connection's library (contract sections 14, 16, 17): fetched once and
+     shared by the header (where the project installs) and the Datasets tab. */
+  let libPromise = null;
+  ctx.lib = null;
+  ctx.library = (refresh) => {
+    const tid = ctx.project.target_id || (ctx.target && ctx.target.id);
+    if (!tid) return Promise.resolve(null);
+    if (!libPromise || refresh) {
+      libPromise = ctx.api.library(tid, !!refresh).then((j) => { ctx.lib = j; renderWhere(); return j; });
+      libPromise.catch(() => { libPromise = null; });
+    }
+    return libPromise;
+  };
+  /* Where the project installs: computed here from the library the moment a
+     dataset is ticked; the server's own answer (every save) when there is no
+     library yet. */
+  ctx.where = ctx.project.where || null;
+  ctx.whereNow = () => (ctx.lib ? installAdom(ctx.kind, ctx.project.datasets || [], ctx.project.adom || "", ctx.lib) : ctx.where);
+  function renderWhere() {
+    const w = ctx.whereNow();
+    const b = $("ed-adom-badge");
+    const fieldBox = $("ed-adom-field");
+    if (!b) return;
+    const bd = badgeOf(w);
+    b.hidden = !bd;
+    if (bd) { b.className = "fw-badge fw-badge-" + bd.tone; b.textContent = bd.text; b.title = bd.title; }
+    if (!fieldBox) return;
+    fieldBox.hidden = !w;
+    if (!w) return;
+    const sel = $("ed-adom");
+    const opts = [["", "Auto — from the datasets it reads" + (w.mode === "auto" ? ` (now ${adomLabel(w.shown)})` : "")]]
+      .concat((w.can_choose ? w.adoms : []).map((a) => [a, adomLabel(a)]));
+    if (sel.options.length !== opts.length || Array.from(sel.options).some((o, i) => o.value !== opts[i][0] || o.text !== opts[i][1])) {
+      clear(sel);
+      opts.forEach(([v, t]) => sel.appendChild(h("option", { value: v, text: t })));
+    }
+    sel.value = w.can_choose && (ctx.project.adom || "") && w.adoms.includes(ctx.project.adom) ? ctx.project.adom : "";
+    sel.disabled = !w.can_choose;
+    const help = clear($("ed-adom-help"));
+    help.appendChild(document.createTextNode(w.reason + (w.can_choose ? "" : " Nothing to choose: only a Global token chooses the ADOM.")));
+    if (w.shown === GLOBAL && w.mode !== "legacy") help.appendChild(h("span", { text: " In SATOM it is opened from the Global console." }));
+    if (w.warning) help.appendChild(h("div", { class: "ed-tone-bad", id: "ed-adom-warning", text: w.warning }));
+  }
+  const adomSel = $("ed-adom");
+  if (adomSel) adomSel.addEventListener("change", () => { ctx.project.adom = adomSel.value; ctx.changed(); renderWhere(); });
+  const adomBadge = $("ed-adom-badge");
+  const openDetails = () => { const d = $("ed-details"); if (d) { d.open = true; const s2 = $("ed-adom"); if (s2) s2.focus(); } };
+  if (adomBadge) {
+    adomBadge.addEventListener("click", openDetails);
+    adomBadge.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetails(); } });
+  }
   ctx.testScript = (slug) => { testrunTab.pickScript(slug); activate("testrun", true); };
   ctx.activate = (id) => activate(id, true);
   /* A project saved elsewhere (a chat draft applied): it is now the saved state. */
@@ -107,6 +159,7 @@ function boot() {
     el.hidden = !d;
     $("btn-save").classList.toggle("ed-attention", d);
     header();
+    renderWhere();
   }
   [["ed-name", "name"], ["ed-slug-input", "slug"], ["ed-version-input", "version"], ["ed-icon", "icon"], ["ed-description", "description"]].forEach(([id, key]) => {
     const el = $(id);
@@ -235,6 +288,7 @@ function boot() {
         const resp = await ctx.api.save(ctx.project.id, sent);
         const lc = resp.local_check;
         delete resp.local_check;
+        if (resp.where !== undefined) ctx.where = resp.where;
         const local = M.savePayload(ctx.project);
         const editedMeanwhile = !deepEqual(local, sent);
         ctx.project = resp;
@@ -378,6 +432,13 @@ function boot() {
     const caller = ctx.snapshot && ctx.snapshot.caller;
     if (caller && caller.can_import === false) warn.appendChild(h("div", { class: "fw-alert fw-alert-info" }, "Your SATOM token cannot import (it needs the admin scope and a super-admin owner)."));
     if (r.summary) warn.appendChild(h("p", { class: "ed-help", text: `It lands in ${r.summary.lands_in || "draft"}; creates: ${(r.summary.creates || []).join(", ") || "nothing"}; keeps: ${(r.summary.keeps || []).join(", ") || "nothing"}.` }));
+    const w = ctx.whereNow();
+    const ad = clear($("im-adom"));
+    if (w) {
+      ad.appendChild(h("strong", { text: `Installs in ${w.mode === "legacy" ? w.shown : adomLabel(w.shown)}. ` }));
+      ad.appendChild(document.createTextNode(w.reason + (w.shown === GLOBAL && w.mode !== "legacy" ? " Users who may not enter every ADOM it reads see only their part." : "")));
+      if (w.warning) warn.appendChild(h("div", { class: "fw-alert fw-alert-warning", id: "im-adom-warning" }, w.warning));
+    }
     clear($("im-out"));
     $("im-downgrade").checked = false;
     ctx.say("", "info");
@@ -717,6 +778,7 @@ function boot() {
   if (tid) {
     ctx.schemaState = "loading";
     activate(want || tabs[0], true);
+    ctx.library().catch(() => {});      // where it installs: the server's answer until it arrives
     Promise.all([ctx.api.schema(tid), ctx.api.snapshot(tid).catch(() => null)]).then(([schema, snap]) => {
       ctx.schema = schema;
       ctx.snapshot = snap;

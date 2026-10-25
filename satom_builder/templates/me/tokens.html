@@ -4,7 +4,7 @@
 {% block content %}
 <div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-key me-2"></i>My SATOM tokens</h1></div>
 <div class="fw-card"><div class="fw-card-body">
-  <p>Everything the Builder does in a SATOM runs with <strong>your own</strong> SATOM API token, so it carries your RBAC and your ADOM, and SATOM's audit log names you. A SATOM administrator with <em>users.manage</em> creates it under <strong>Administrator → API Tokens</strong> with you as its owner (it is shown once). Scopes: <span class="sb-mono">read</span> to see the target, <span class="sb-mono">write</span> to validate and rehearse, <span class="sb-mono">admin</span> (as a super-admin) to import and to register the publisher key.</p>
+  <p>Everything the Builder does in a SATOM runs with <strong>your own</strong> SATOM API token, so it carries your RBAC and your ADOMs, and SATOM's audit log names you. Create it with the <strong>Global</strong> ADOM: the Builder then sees the datasets of every ADOM you may enter, and each project installs in the ADOM of the datasets it reads (in Global when it reads more than one). A token bound to one ADOM only ever sees that ADOM. A SATOM administrator with <em>users.manage</em> creates it under <strong>Administrator → API Tokens</strong> with you as its owner (it is shown once). Scopes: <span class="sb-mono">read</span> to see the target, <span class="sb-mono">write</span> to validate and rehearse, <span class="sb-mono">admin</span> (as a super-admin) to import and to register the publisher key.</p>
   <p class="sb-help mb-0">Tokens are encrypted at rest and never shown again: this page only says whether one is set.</p>
 </div></div>
 {% if not rows %}
@@ -17,6 +17,18 @@
   <div class="fw-card-body">
     {% if r.set and r.caller %}
     <p class="sb-help">Last seen as <strong>{{ r.caller.username }}</strong> on SATOM {{ r.satom_version }} — scopes {{ (r.caller.scopes or [])|join(', ') or '—' }}{% if r.caller.can_author %}, may author{% endif %}{% if r.caller.can_import %}, may import{% endif %} ({{ m.when(r.fetched_at) }}).</p>
+    {% endif %}
+    {% if r.set and r.reach %}
+    <div class="sb-reach mb-2" data-reach="{{ 'global' if r.reach.can_choose else ('bound' if r.reach.known else 'legacy') }}">
+      {% if not r.reach.known %}
+      <p class="sb-help mb-0">This SATOM does not report which ADOMs the token reaches (it predates SATOM's ADOM-per-call API): plugins install in the token's ADOM.</p>
+      {% elif r.reach.can_choose %}
+      <p class="mb-1"><span class="fw-badge fw-badge-success">Global token</span> Sees <strong>{{ r.reach.total }}</strong> datasets of every ADOM you may enter: {{ r.reach.adoms|join(', ') or '—' }}.</p>
+      {% else %}
+      <p class="mb-1"><span class="fw-badge fw-badge-warning">Bound to ADOM {{ r.reach.token_adom }}</span> Sees <strong>{{ r.reach.total }}</strong> datasets.{% if r.reach.away_total %} <strong>{{ r.reach.away_total }}</strong> more live in other ADOMs ({% for a, n in r.reach.away %}{{ a }} {{ n }}{{ ', ' if not loop.last }}{% endfor %}): replace this token with a <strong>Global</strong> one to use them.{% endif %}</p>
+      {% endif %}
+      {% if r.reach.per %}<p class="sb-help mb-0">{% for p, n in r.reach.per %}{{ p }}: {{ n }}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+    </div>
     {% endif %}
     <form method="post" action="{{ url_for('me.token_set', tid=r.t.id) }}" class="d-flex flex-wrap gap-2" autocomplete="off">
       {{ m.csrf() }}

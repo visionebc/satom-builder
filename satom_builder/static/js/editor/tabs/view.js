@@ -6,6 +6,7 @@ import { h, clear, field, input, textarea, select, checkbox, button, iconButton,
 import { CodeEditor } from "../codeedit.js";
 import { ensure } from "../model.js";
 import { moveItem, uniqueName } from "../util.js";
+import { badgeOf, elsewhereOf, groupByAdom } from "../adom.js";
 
 const FILES = [["body.jinja", "Body (Jinja / HTML)"], ["style.css", "CSS"], ["script.js", "JavaScript"]];
 const S = { file: "body.jinja", editor: null, values: {} };
@@ -58,13 +59,18 @@ function datasetList(schema) {
 const DS = { tid: null, lib: null, loading: null, error: "", q: "" };
 const SOURCE_LABEL = { builtin: "built-in", admin: "administrator", objects: "device objects" };
 
+function fetchLibrary(ctx, tid, refresh) {
+  // the editor's shared copy (main.js) when there is one: the library is large
+  return ctx.library ? ctx.library(refresh) : ctx.api.library(tid, refresh);
+}
+
 function loadLibrary(ctx) {
   const tid = ctx.project.target_id || (ctx.target && ctx.target.id);
   if (!tid) return Promise.resolve(null);
   if (DS.tid === tid && (DS.lib || DS.error)) return Promise.resolve(DS.lib);
   if (!DS.loading) {
     DS.tid = tid;
-    DS.loading = ctx.api.library(tid).then((j) => { DS.lib = j; DS.error = ""; return j; })
+    DS.loading = fetchLibrary(ctx, tid, false).then((j) => { DS.lib = j; DS.error = ""; return j; })
       .catch((e) => { DS.lib = null; DS.error = e.message; return null; })
       .finally(() => { DS.loading = null; });
   }
@@ -96,49 +102,71 @@ export const datasets = {
       rerender();
     };
     // what the plugin reads now
+    const away = elsewhereOf(DS.lib);
     const picked = h("div", { class: "ed-ds-picked", id: "dsx-picked" }, chosen.length ? chosen.map((k) => {
       const d = byKey[k];
       const rm = iconButton("bi-x-lg", `Stop reading ${k}`, { class: "btn btn-sm btn-fw-outline ed-icon-btn" });
       rm.addEventListener("click", () => toggle(k, false));
-      return h("span", { class: "ed-ds-chip" + (d ? "" : " ed-ds-missing") }, h("code", { text: k }), d ? null : h("small", { text: " not offered by the target" }), rm);
+      const why = d ? null : h("small", { text: away[k] ? ` lives in ADOM ${away[k]}, which this connection does not reach` : " not offered by the target" });
+      return h("span", { class: "ed-ds-chip" + (d ? "" : " ed-ds-missing") }, h("code", { text: k }), d ? (d.product ? h("small", { class: "text-muted", text: " " + d.product }) : null) : why, rm);
     }) : empty("The plugin reads no dataset yet."));
+    const w = ctx.whereNow ? ctx.whereNow() : null;
+    const bd = badgeOf(w);
+    const whereBox = w ? h("div", { class: "ed-ds-where" + (w.warning ? " ed-issue" : ""), id: "dsx-where", role: "note" },
+      h("strong", { text: bd.text + ". " }), w.reason, w.warning ? h("div", { text: w.warning }) : null) : null;
     // search + groups
     const q = input(DS.q, { id: "dsx-search", type: "search", placeholder: "Search: name, key or column", "aria-label": "Search the target's datasets" });
     const t = DS.q.trim().toLowerCase();
     const hit = (d) => !t || (d.key + " " + (d.label || "") + " " + (d.columns || []).join(" ")).toLowerCase().includes(t);
-    const groups = {};
-    all.forEach((d) => { const g = d.group || SOURCE_LABEL[d.source] || "Datasets"; (groups[g] = groups[g] || []).push(d); });
     const count = h("span", { class: "ed-help", id: "dsx-count", "aria-live": "polite" });
     const list = h("div", { class: "ed-ds-groups", id: "dsx-groups" });
     let shown = 0, idx = 0;
-    Object.keys(groups).forEach((g) => {
-      const items = groups[g].filter(hit);
-      if (!items.length) return;
-      shown += items.length;
-      const open = g === "Built-in" || g === "Administrator datasets" || !!t || items.some((d) => chosen.includes(d.key));
-      const det = h("details", { class: "ed-ds-group", open: open || null }, h("summary", null, g, " ", h("small", { class: "text-muted", text: `(${items.length})` })));
-      items.forEach((d) => {
-        idx += 1;
-        const c = checkbox(`${d.label || d.key}`, chosen.includes(d.key), { id: `dsx-${idx}` });
-        c.querySelector("input").dataset.key = d.key;
-        c.querySelector("input").addEventListener("change", (e) => toggle(d.key, e.target.checked));
-        det.appendChild(h("div", { class: "ed-ds" }, c, h("div", { class: "ed-help" },
-          h("code", { text: d.key }), d.source ? [" ", badge(SOURCE_LABEL[d.source] || d.source, d.source === "admin" ? "info" : "secondary")] : null,
-          d.columns ? ` · ${d.columns.length} columns` : "", d.description ? " · " + d.description : "")));
+    // ADOM first (the basics every ADOM offers, then one per product), then
+    // the catalogue's own groups inside each
+    groupByAdom(all).forEach((A) => {
+      const inA = A.items.filter(hit);
+      if (!inA.length) return;
+      const groups = {};
+      inA.forEach((d) => { const g = d.group || SOURCE_LABEL[d.source] || "Datasets"; (groups[g] = groups[g] || []).push(d); });
+      const aOpen = A.adom === "" || !!t || inA.some((d) => chosen.includes(d.key));
+      const aDet = h("details", { class: "ed-ds-adom", open: aOpen || null, "data-adom": A.adom || "every" },
+        h("summary", null, h("strong", { text: A.label }), " ", h("small", { class: "text-muted", text: `(${inA.length})` })));
+      Object.keys(groups).forEach((g) => {
+        const items = groups[g];
+        shown += items.length;
+        const open = g === "Built-in" || g === "Administrator datasets" || !!t || items.some((d) => chosen.includes(d.key));
+        const det = h("details", { class: "ed-ds-group", open: open || null }, h("summary", null, g, " ", h("small", { class: "text-muted", text: `(${items.length})` })));
+        items.forEach((d) => {
+          idx += 1;
+          const c = checkbox(`${d.label || d.key}`, chosen.includes(d.key), { id: `dsx-${idx}` });
+          c.querySelector("input").dataset.key = d.key;
+          c.querySelector("input").addEventListener("change", (e) => toggle(d.key, e.target.checked));
+          det.appendChild(h("div", { class: "ed-ds" }, c, h("div", { class: "ed-help" },
+            h("code", { text: d.key }), d.source ? [" ", badge(SOURCE_LABEL[d.source] || d.source, d.source === "admin" ? "info" : "secondary")] : null,
+            d.columns ? ` · ${d.columns.length} columns` : "", d.description ? " · " + d.description : "")));
+        });
+        aDet.appendChild(det);
       });
-      list.appendChild(det);
+      list.appendChild(aDet);
     });
-    count.textContent = `${chosen.length} chosen · ${all.length} offered` + (t ? ` · ${shown} match` : "");
+    // datasets of ADOMs this connection does not reach: named, never offered
+    const awayKeys = Object.keys(away).filter((k) => !t || k.toLowerCase().includes(t));
+    const awayBox = awayKeys.length ? h("details", { class: "ed-ds-adom ed-ds-away", id: "dsx-away" },
+      h("summary", null, h("strong", { text: "In ADOMs this connection does not reach" }), " ", h("small", { class: "text-muted", text: `(${awayKeys.length})` })),
+      h("p", { class: "ed-help", text: "SATOM has these datasets in other ADOMs. This connection's token is bound to one ADOM, so a plugin built with it cannot read them: replace the token with a Global one (My tokens) to use them." }),
+      h("div", { class: "ed-help ed-mono" }, awayKeys.slice(0, 200).map((k) => h("div", null, h("code", { text: k }), " — ADOM " + away[k])),
+        awayKeys.length > 200 ? h("div", { text: `… and ${awayKeys.length - 200} more (search to narrow).` }) : null)) : null;
+    count.textContent = `${chosen.length} chosen · ${all.length} offered` + (t ? ` · ${shown} match` : "") + (Object.keys(away).length ? ` · ${Object.keys(away).length} in other ADOMs` : "");
     q.addEventListener("input", () => { DS.q = q.value; const pos = q.selectionStart; rerender(); const n = document.getElementById("dsx-search"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } });
     const refresh = button("Refresh from SATOM", { id: "dsx-refresh" }, "bi-arrow-repeat");
-    refresh.addEventListener("click", () => { DS.lib = null; DS.error = ""; DS.loading = ctx.api.library(tid, true).then((j) => { DS.lib = j; }).catch((e) => { DS.error = e.message; }).finally(() => { DS.loading = null; rerender(); }); });
+    refresh.addEventListener("click", () => { DS.lib = null; DS.error = ""; DS.loading = fetchLibrary(ctx, tid, true).then((j) => { DS.lib = j; }).catch((e) => { DS.error = e.message; }).finally(() => { DS.loading = null; rerender(); }); });
     const issues = ctx.issuesFor("datasets", null);
     panel.appendChild(card("Datasets", [issues.length ? h("div", { class: "ed-issue", role: "note" }, issues.map((m) => h("div", { text: m }))) : null,
       h("p", { class: "ed-help", text: "In the body: {{ <key>.rows }} (or {{ data.<key>.rows }}). A plugin only reads the datasets it declares. The target offers SATOM's built-in datasets, the ones its administrators published (admin_<name>) and one per object type its device cache holds (<product>_<type>)." }),
       DS.error ? h("div", { class: "fw-alert fw-alert-info", role: "note", text: "Only the dataset keys are listed: " + DS.error }) : null,
-      h("h4", { class: "ed-sub", text: "Read by this plugin" }), picked,
+      h("h4", { class: "ed-sub", text: "Read by this plugin" }), picked, whereBox,
       h("div", { class: "ed-inline" }, field("Find a dataset", q), refresh, count),
-      list.childNodes.length ? list : empty(t ? "No dataset matches." : "The target lists no dataset.")], { icon: "bi-table", id: "dsx-card" }));
+      list.childNodes.length ? list : empty(t ? "No dataset matches." : "The target lists no dataset."), awayBox], { icon: "bi-table", id: "dsx-card" }));
   },
   reveal() {},
 };

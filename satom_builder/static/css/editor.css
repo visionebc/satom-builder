@@ -302,6 +302,14 @@ body.ed-checks-open .ed-checks { display: block; }
 .ed-ds-group { border: 1px solid var(--ed-border-light); border-radius: var(--ed-radius); padding: 4px 10px; margin-bottom: 6px; background: var(--ed-surface); }
 .ed-ds-group > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 4px 0; }
 .ed-ds-group .ed-ds { padding: 3px 0 5px; border-top: 1px solid var(--ed-border-light); }
+/* contract section 17: datasets grouped by ADOM, and where the plugin installs */
+.ed-ds-adom { margin-bottom: 8px; }
+.ed-ds-adom > summary { cursor: pointer; font-size: 13.5px; padding: 4px 0; }
+.ed-ds-adom > .ed-ds-group { margin-left: 12px; }
+.ed-ds-away { border: 1px dashed var(--ed-border); border-radius: var(--ed-radius); padding: 4px 10px; }
+.ed-ds-where { margin: 8px 0; font-size: 12.5px; }
+.ed-adom-field { max-width: 560px; margin-top: 8px; }
+#ed-adom-badge { cursor: pointer; }
 .db-add-list { list-style: none; margin: 6px 0; padding: 0; max-height: 360px; overflow: auto; }
 .db-add-list li { padding: 3px 0; border-top: 1px solid var(--ed-border-light); font-size: 12.5px; overflow-wrap: anywhere; }
 

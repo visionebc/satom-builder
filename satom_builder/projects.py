@@ -26,9 +26,11 @@ MAX_DEPTH = 40
 SECRET_FIELDS = ("password", "secret", "token", "api_key", "client_secret")
 
 EDITABLE = ("name", "kind", "slug", "version", "icon", "description", "target_id",
-            "files", "datasets", "params", "app")
+            "files", "datasets", "params", "app", "adom")
+#: an ADOM key as SATOM names them ('' = Auto: from the datasets it reads)
+ADOM_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 READ_ONLY = ("id", "assets", "updated_at", "last_check", "local_check", "created_at",
-             "owner")
+             "owner", "where")
 
 
 class ShapeError(ValueError):
@@ -124,6 +126,14 @@ def validate_patch(body, conn=None) -> dict:
         if len(json.dumps(v)) > 256 * 1024:
             raise ShapeError("params is too large.")
         out["params"] = v
+    if "adom" in body:
+        v = body["adom"]
+        if v is None:
+            v = ""
+        if not isinstance(v, str) or (v and not ADOM_RE.match(v)):
+            raise ShapeError("adom must be '' (Auto: from the datasets it reads) or an ADOM "
+                             "key such as global or fortigate.")
+        out["adom"] = v
     if "app" in body:
         v = body["app"]
         if not isinstance(v, dict):
@@ -180,6 +190,7 @@ def to_api(conn, row) -> dict:
         "datasets": draft.get("datasets") or [],
         "params": draft.get("params") or [],
         "app": draft.get("app") or {},
+        "adom": str(draft.get("adom") or ""),
         "assets": asset_list(conn, row["id"]),
         "updated_at": row["updated_at"],
         "last_check": db.loads(row["last_check"]),
@@ -207,7 +218,7 @@ def apply_patch(conn, row, patch: dict, by_user: str) -> None:
     draft = db.loads(row["draft"], {}) or {}
     cols = {k: patch[k] for k in ("name", "kind", "slug", "version", "icon", "description",
                                   "target_id") if k in patch}
-    for k in ("files", "datasets", "params", "app"):
+    for k in ("files", "datasets", "params", "app", "adom"):
         if k in patch:
             draft[k] = patch[k]
     conn.execute("INSERT INTO project_revisions (project_id, at, by_user, data) "

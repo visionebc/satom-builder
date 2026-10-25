@@ -11,7 +11,7 @@
 import { clone, deepEqual } from "./util.js";
 
 /* Keys the server owns: never sent back. */
-export const READ_ONLY = ["id", "kind", "assets", "updated_at", "last_check", "local_check"];
+export const READ_ONLY = ["id", "kind", "assets", "updated_at", "last_check", "local_check", "where"];
 
 export function savePayload(project) {
   const out = {};

@@ -40,6 +40,7 @@
               <i class="bi bi-hdd-network" aria-hidden="true"></i> No target
             {%- endif -%}
           </span>
+          <span id="ed-adom-badge" class="fw-badge fw-badge-info" role="button" tabindex="0" aria-controls="ed-details" hidden></span>
           <span id="ed-check-badge" class="fw-badge fw-badge-secondary">Not checked</span>
           <span id="ed-dirty" class="fw-badge fw-badge-warning" hidden>Unsaved changes</span>
         </div>
@@ -63,6 +64,11 @@
         <div class="ed-field"><label class="form-label ed-label" for="ed-version-input">Version</label><input class="form-control form-control-sm ed-mono" id="ed-version-input" placeholder="1.0.0" aria-describedby="ed-version-help"><div class="form-text ed-help" id="ed-version-help">X.Y.Z</div></div>
         <div class="ed-field"><label class="form-label ed-label" for="ed-icon">Icon</label><input class="form-control form-control-sm ed-mono" id="ed-icon" placeholder="bi-puzzle" aria-describedby="ed-icon-help"><div class="form-text ed-help" id="ed-icon-help">a Bootstrap icon class</div></div>
         <div class="ed-field"><label class="form-label ed-label" for="ed-description">Description</label><input class="form-control form-control-sm" id="ed-description" maxlength="500"></div>
+      </div>
+      <div class="ed-field ed-adom-field" id="ed-adom-field" hidden>
+        <label class="form-label ed-label" for="ed-adom">Installs in (SATOM ADOM)</label>
+        <select class="form-select form-select-sm" id="ed-adom" aria-describedby="ed-adom-help"></select>
+        <div class="form-text ed-help" id="ed-adom-help"></div>
       </div>
     </details>
     <div class="ed-status" id="ed-status" role="status" aria-live="polite"></div>
@@ -109,6 +115,7 @@
     <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="im-title">Import into SATOM</h2>
       <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="im-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
     <div id="im-warn"></div>
+    <p class="ed-help" id="im-adom"></p>
     <form id="im-form" autocomplete="off">
       <div id="im-secrets"></div>
       <div class="form-check ed-check"><input class="form-check-input" type="checkbox" id="im-downgrade"><label class="form-check-label" for="im-downgrade">Allow a downgrade (the target has a newer version)</label></div>

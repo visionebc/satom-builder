@@ -128,16 +128,41 @@ def dataset_summary(keys) -> dict:
                                   "mkey, parent_id and the object's fields with - read as _"}
 
 
+def adom_summary(snapshot: dict) -> dict | None:
+    """Contract section 17, for a view's prompt: which ADOM the datasets
+    above belong to, how the plugin's ADOM is decided, and how many datasets
+    live in ADOMs this connection does not reach (names are in the author
+    guide). None for a SATOM older than section 17."""
+    reach = snapshot.get("reach")
+    if not isinstance(reach, dict):
+        return None
+    away: dict = {}
+    for a in ((snapshot.get("elsewhere") or {}).get("datasets") or {}).values():
+        away[str(a)] = away.get(str(a), 0) + 1
+    out = {"datasets_are_of": str(snapshot.get("product") or "global"),
+           "rule": "a view installs in the ADOM of the product datasets it reads; reading "
+                   "datasets of more than one product makes it install in Global. Pick the "
+                   "datasets the request needs, of any product listed: never say a listed "
+                   "dataset does not exist."}
+    if away:
+        out["not_reachable"] = dict(sorted(away.items()))
+    return out
+
+
 def target_summary(snapshot: dict, kind: str = "app") -> dict:
     """Names and shapes only, from an allow-list of snapshot keys. A view or a
     widget gets only what a view can use."""
     if kind in ("view", "widget"):
         schema = snapshot.get("schema") or {}
         choices = snapshot.get("choices") or {}
-        return {"satom_version": str(snapshot.get("satom_version", "")),
-                "datasets": dataset_summary(choices.get("datasets")),
-                "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS
-                           if k in schema and k != "datasets"}}
+        out = {"satom_version": str(snapshot.get("satom_version", "")),
+               "datasets": dataset_summary(choices.get("datasets")),
+               "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS
+                          if k in schema and k != "datasets"}}
+        adom = adom_summary(snapshot)
+        if adom:
+            out["adom"] = adom
+        return out
     ex = snapshot.get("existing") or {}
     stores = {}
     for slug, s in (ex.get("stores") or {}).items():

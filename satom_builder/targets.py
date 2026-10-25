@@ -43,22 +43,42 @@ def set_token(conn, user_id: int, target_id: int, token: str) -> None:
                  "VALUES (?,?,?,?) ON CONFLICT(user_id, target_id) DO UPDATE SET "
                  "token_enc = excluded.token_enc, updated_at = excluded.updated_at",
                  (user_id, target_id, encrypt(token), db.now()))
+    forget_link(conn, user_id, target_id)
+
+
+def forget_link(conn, user_id: int, target_id: int) -> None:
+    """Drop what was cached through one author's link to a target: its
+    snapshots (every ADOM) AND its library. A new token can reach other ADOMs
+    (contract section 17); the old library would keep showing the old ones."""
     conn.execute("DELETE FROM snapshots WHERE user_id = ? AND target_id = ?",
+                 (user_id, target_id))
+    conn.execute("DELETE FROM library_cache WHERE user_id = ? AND target_id = ?",
                  (user_id, target_id))
 
 
 def clear_token(conn, user_id: int, target_id: int) -> None:
     conn.execute("DELETE FROM tokens WHERE user_id = ? AND target_id = ?", (user_id, target_id))
-    conn.execute("DELETE FROM snapshots WHERE user_id = ? AND target_id = ?",
-                 (user_id, target_id))
+    forget_link(conn, user_id, target_id)
 
 
-def client(conn, target_row, user_id: int) -> SatomClient:
+def client(conn, target_row, user_id: int, adom: str | None = None) -> SatomClient:
+    """A client for one author's link; *adom* goes to SATOM as ``?adom=`` on
+    the calls that run in an ADOM (contract section 17)."""
     cfg = current_app.config
     return SatomClient(target_row["base_url"], token_for(conn, user_id, target_row["id"]),
                        ca_pem=target_row["ca_pem"], verify_tls=bool(target_row["verify_tls"]),
                        timeout=float(cfg["SATOM_BUILDER_SATOM_TIMEOUT"]),
-                       transport=cfg.get(TRANSPORT_KEY))
+                       transport=cfg.get(TRANSPORT_KEY), adom=adom)
+
+
+def call_adom(snap: dict | None) -> str | None:
+    """The ``?adom=`` the calls that follow a snapshot carry: the ADOM it was
+    asked in, when the token may choose one; None otherwise (a bound token,
+    or a SATOM older than section 17 -- they run in the token's ADOM)."""
+    reach = (snap or {}).get("reach") or {}
+    if isinstance(reach, dict) and reach.get("can_choose") and reach.get("adom"):
+        return str(reach["adom"])
+    return None
 
 
 def forget_snapshots(conn, target_id: int) -> None:
@@ -68,22 +88,26 @@ def forget_snapshots(conn, target_id: int) -> None:
     conn.execute("DELETE FROM snapshots WHERE target_id = ?", (target_id,))
 
 
-def snapshot(conn, target_row, user_id: int, refresh: bool = False) -> dict:
-    """The cached target snapshot, refetched when older than the TTL."""
+def snapshot(conn, target_row, user_id: int, refresh: bool = False,
+             adom: str | None = None) -> dict:
+    """The cached target snapshot in ADOM *adom* (None = the token's own),
+    refetched when older than the TTL."""
     ttl = float(current_app.config["SATOM_BUILDER_SNAPSHOT_TTL"])
+    key = adom or ""
     if not refresh:
         row = conn.execute("SELECT fetched_at, data FROM snapshots WHERE target_id = ? "
-                           "AND user_id = ?", (target_row["id"], user_id)).fetchone()
+                           "AND user_id = ? AND adom = ?",
+                           (target_row["id"], user_id, key)).fetchone()
         if row and db.now() - row["fetched_at"] < ttl:
             snap = db.loads(row["data"])
             if isinstance(snap, dict):
                 return snap
-    with client(conn, target_row, user_id) as c:
+    with client(conn, target_row, user_id, adom=adom) as c:
         snap = c.target()
-    conn.execute("INSERT INTO snapshots (target_id, user_id, fetched_at, data) VALUES "
-                 "(?,?,?,?) ON CONFLICT(target_id, user_id) DO UPDATE SET "
+    conn.execute("INSERT INTO snapshots (target_id, user_id, adom, fetched_at, data) VALUES "
+                 "(?,?,?,?,?) ON CONFLICT(target_id, user_id, adom) DO UPDATE SET "
                  "fetched_at = excluded.fetched_at, data = excluded.data",
-                 (target_row["id"], user_id, db.now(), db.dumps(snap)))
+                 (target_row["id"], user_id, key, db.now(), db.dumps(snap)))
     return snap
 
 
@@ -129,16 +153,104 @@ def cached_library(conn, target_row, user_id: int, key: str, fetch, refresh: boo
     return data
 
 
+def library(conn, target_row, user_id: int, refresh: bool = False) -> dict:
+    """The connection's library (the token's own ADOM: every ADOM the owner
+    may enter for a Global token); ``{}`` when it cannot be had."""
+    try:
+        return cached_library(conn, target_row, user_id, "library", lambda c: c.library(),
+                              refresh)
+    except SatomError:
+        return {}
+
+
 def dataset_defs(conn, target_row, user_id: int) -> dict:
     """``{key: dataset}`` of the target's library (every source: built-in,
     administrator, device objects, contract sections 14 and 16); ``{}`` when
     the target's SATOM has no library or cannot be reached."""
-    try:
-        lib = cached_library(conn, target_row, user_id, "library", lambda c: c.library())
-    except SatomError:
-        return {}
+    lib = library(conn, target_row, user_id)
     return {str(d.get("key")): d for d in lib.get("datasets") or []
             if isinstance(d, dict) and d.get("key")}
+
+
+def reach_of(lib: dict) -> dict:
+    """What the connection reaches (contract section 17), normalised. A
+    SATOM older than section 17 sends no ``reach``: ``known`` is False."""
+    r = (lib or {}).get("reach")
+    if not isinstance(r, dict):
+        return {"known": False, "token_adom": str((lib or {}).get("product") or ""),
+                "can_choose": False, "adoms": []}
+    return {"known": True, "token_adom": str(r.get("token_adom") or ""),
+            "can_choose": bool(r.get("can_choose")),
+            "adoms": [str(a) for a in r.get("adoms") or []]}
+
+
+def elsewhere_of(lib: dict) -> dict:
+    e = ((lib or {}).get("elsewhere") or {}).get("datasets") or {}
+    return {str(k): str(v) for k, v in e.items()} if isinstance(e, dict) else {}
+
+
+GLOBAL = "global"
+
+
+def install_adom(kind: str, datasets, override: str, lib: dict) -> dict:
+    """Where a project installs, from what it reads (contract section 17).
+    Pure: the project's kind, dataset keys and ADOM override, and the
+    connection's library.
+
+    -> ``{"adom", "shown", "mode", "products", "reason", "away", "warning",
+    "can_choose", "adoms", "token_adom"}``. ``adom`` is what the calls send
+    (None = the token's own); ``shown`` is the ADOM to display. ``mode``:
+    ``auto`` (from the datasets), ``override`` (the author fixed it),
+    ``bound`` (a token bound to one ADOM: nothing to choose) or ``legacy``
+    (a SATOM without section 17)."""
+    reach = reach_of(lib)
+    defs = {str(d.get("key")): d for d in (lib or {}).get("datasets") or []
+            if isinstance(d, dict) and d.get("key")}
+    away_all = elsewhere_of(lib)
+    keys = [str(k) for k in datasets or []] if kind in ("view", "widget") else []
+    products = sorted({str(defs[k].get("product")) for k in keys
+                       if k in defs and defs[k].get("product")})
+    away = {k: away_all[k] for k in keys if k not in defs and k in away_all}
+    out = {"products": products, "away": away, "warning": "",
+           "can_choose": reach["can_choose"], "adoms": reach["adoms"],
+           "token_adom": reach["token_adom"]}
+    if not reach["known"]:
+        return dict(out, adom=None, shown=reach["token_adom"] or "the token's ADOM",
+                    mode="legacy", reason="This SATOM does not say which ADOMs the token "
+                    "reaches (it predates SATOM's ADOM-per-call API): the project installs "
+                    "in the token's ADOM.")
+    if not reach["can_choose"]:
+        tok = reach["token_adom"]
+        warn = ""
+        if away:
+            where = sorted(set(away.values()))
+            warn = ("%s %s in ADOM %s, but this connection's token is bound to ADOM %s: "
+                    "link a Global token (My tokens) to build across ADOMs."
+                    % (", ".join(sorted(away)), "lives" if len(away) == 1 else "live",
+                       " and ".join(where), tok))
+        return dict(out, adom=None, shown=tok, mode="bound", warning=warn,
+                    reason="This connection's token is bound to ADOM %s." % tok)
+    ov = (override or "").strip().lower()
+    if ov and ov in reach["adoms"]:
+        warn = ""
+        other = [p for p in products if p != ov]
+        if ov != GLOBAL and other:
+            warn = ("It reads %s datasets, but it is set to install in ADOM %s, which does "
+                    "not offer them: SATOM will refuse it. Use Auto, or Global."
+                    % (", ".join(other), ov))
+        return dict(out, adom=ov, shown=ov, mode="override", warning=warn,
+                    reason="Set by hand to %s." % ("Global" if ov == GLOBAL else "ADOM " + ov))
+    if len(products) == 1:
+        return dict(out, adom=products[0], shown=products[0], mode="auto",
+                    reason="Every product dataset it reads is %s." % products[0])
+    if len(products) > 1:
+        return dict(out, adom=GLOBAL, shown=GLOBAL, mode="auto",
+                    reason="It reads %s datasets: a plugin that reads more than one ADOM "
+                    "installs in Global and is opened from SATOM's Global console."
+                    % " and ".join(products))
+    return dict(out, adom=GLOBAL, shown=GLOBAL, mode="auto",
+                reason="It reads no product dataset yet, so it installs in Global; it "
+                "moves to a product's ADOM as soon as it reads only that product.")
 
 
 class NotReady(Exception):
@@ -149,8 +261,7 @@ class NotReady(Exception):
         self.message, self.code, self.status = message, code, status
 
 
-def context_for_project(conn, project_row, user, refresh: bool = False):
-    """-> (target_row, snapshot). Raises NotReady / SatomError."""
+def _project_target(conn, project_row, user):
     if project_row["target_id"] is None:
         raise NotReady("Pick a SATOM target for this project first.", "no_target")
     t = get_target(conn, project_row["target_id"])
@@ -159,7 +270,33 @@ def context_for_project(conn, project_row, user, refresh: bool = False):
     if not has_token(conn, user.id, t["id"]):
         raise NotReady(f"You have no SATOM token for {t['name']} yet: add one under "
                        "My tokens.", "no_token")
-    return t, snapshot(conn, t, user.id, refresh=refresh)
+    return t
+
+
+def project_adom(conn, project_row, user, target_row=None) -> dict:
+    """:func:`install_adom` for a project row, with the connection's library."""
+    t = target_row or _project_target(conn, project_row, user)
+    draft = db.loads(project_row["draft"], {}) or {}
+    return install_adom(project_row["kind"], draft.get("datasets") or [],
+                        str(draft.get("adom") or ""), library(conn, t, user.id))
+
+
+def context_for_project(conn, project_row, user, refresh: bool = False,
+                        purpose: str = "install"):
+    """-> (target_row, snapshot). Raises NotReady / SatomError.
+
+    The snapshot is asked in the project's ADOM (contract section 17), so
+    every call that follows it (``call_adom``) runs there too. ``install``
+    (check, validate, rehearse, import, test data): where the project
+    installs, from its datasets. ``generate``: Global when the token may
+    choose and the author fixed no ADOM -- the AI then sees every dataset,
+    and the ADOM follows what it picks."""
+    t = _project_target(conn, project_row, user)
+    where = project_adom(conn, project_row, user, t)
+    adom = where["adom"]
+    if purpose == "generate" and where["mode"] == "auto":
+        adom = GLOBAL
+    return t, snapshot(conn, t, user.id, refresh=refresh, adom=adom)
 
 
 __all__ = ["SatomError", "NotReady", "client", "snapshot", "rules_pack",

@@ -90,7 +90,9 @@ The **Datasets** tab lists every dataset the target SATOM offers (SATOM 4.3.0 an
 - **Device objects** (`<product>_<object type>`, e.g. `fortiweb_vip`, `fortiweb_server_policy`, `fortigate_firewall_policy`, `fortiadc_load_balance_pool__pool_member`; deep layer `fortiweb_deep_<type>`): one per object type the target's device cache holds, hundreds of them. Columns `id`, `appliance_id`, `device`, `mkey` (the object's name on the device), `parent_id`, then the object's own fields (`deployment-mode` reads `deployment_mode`); secret-looking fields read `********`.
 - **Administrator** (`admin_<name>`): a query an administrator of the target built and published in SATOM (Administrator › Database › Plugin datasets). When a plugin needs something no dataset gives, ask them for one: it appears here at the next **Refresh from SATOM**. Your package carries its definition, so a SATOM that does not have it yet creates it pending its administrator's approval.
 
-Your token decides what you see: its ADOM's datasets and, in test data, its ADOM's devices. The **Library** page lists the same catalogue with each dataset's columns, relations and how SATOM builds it.
+Your token decides what you see. A **Global** token sees the datasets of every ADOM you may enter; the tab groups them by ADOM: first **Every ADOM (the basics)** — the built-in datasets and the administrator datasets of every ADOM — then one group per product. A token bound to one ADOM sees only that ADOM's datasets; the others SATOM has are listed apart, under *In ADOMs this connection does not reach*, with the ADOM that holds each one. The **Library** page lists the same catalogue with each dataset's columns, relations and how SATOM builds it.
+
+**Where the plugin installs (the ADOM).** You never pick an ADOM to start: a plugin installs in the ADOM of the datasets it reads. Only FortiGate datasets → the FortiGate ADOM; FortiGate **and** FortiWeb datasets (every firewall rule next to the FortiWeb interface IPs, say) → **Global**, where SATOM's Global console opens it; only basics → Global. The editor's header says **Installs in: …** and changes as you tick datasets; click it, or open *Project details*, to read why and, with a Global token, to fix the ADOM by hand (**Installs in (SATOM ADOM)**: Auto, Global or an ADOM). A fixed ADOM that does not offer what the plugin reads is flagged: SATOM would refuse it. Check, Validate, Rehearse, Import and *Load from SATOM* all run in that ADOM; **Generate** and the **Assistant** look in Global, so the AI may pick datasets of any product, and the ADOM then follows what it picked. In SATOM, a Global plugin shows each user only the rows of the ADOMs they may enter.
 
 ### 4.1 Test data
 
@@ -157,7 +159,7 @@ The editor's **Assistant** tab keeps conversations with an AI profile about the 
 
 ## 7. My tokens
 
-Everything the Builder does in a SATOM runs with **your own SATOM API token**, so it carries your RBAC and your ADOM and SATOM's audit log names you. Create the token in SATOM: an administrator with the *users.manage* permission creates it under **Administrator → API Tokens** and picks you as its owner (the token is shown once). Then paste it on **My tokens** next to the target.
+Everything the Builder does in a SATOM runs with **your own SATOM API token**, so it carries your RBAC and your ADOMs and SATOM's audit log names you. Create the token in SATOM: an administrator with the *users.manage* permission creates it under **Administrator → API Tokens**, picks you as its owner and, recommended, the **Global** ADOM (the token is shown once). Then paste it on **My tokens** next to the target. With a Global token the Builder sees the datasets of every ADOM you may enter and each project installs in the ADOM of what it reads (section 4.0); a token bound to one ADOM keeps every project in that ADOM. The page says which one each link is: *Global token* with the datasets per ADOM, or *Bound to ADOM X* with how many datasets live in ADOMs it cannot reach. Replacing or removing a token drops what the Builder had cached through it.
 
 | Scope | Allows |
 |---|---|
@@ -165,7 +167,7 @@ Everything the Builder does in a SATOM runs with **your own SATOM API token**, s
 | `write` | Validate on SATOM; Rehearse (also needs permission to author in Plugin Studio). |
 | `admin` | Import, and registering the publisher key; SATOM accepts both only from a super-admin. |
 
-Tokens are encrypted at rest. The page only says *set* or *not set*. **Test** fetches the target and shows who you are on SATOM, your scopes and the ADOM; **Remove** deletes your token. A token that SATOM rejects is reported as "your SATOM token is invalid or lacks scope X".
+Tokens are encrypted at rest. The page only says *set* or *not set*. **Test** fetches the target and the library again and shows who you are on SATOM, your scopes, the ADOM and what the token reaches; **Remove** deletes your token. A token that SATOM rejects is reported as "your SATOM token is invalid or lacks scope X".
 
 ## 8. Publisher key
 

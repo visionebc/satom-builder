@@ -111,6 +111,17 @@ def _local_check(conn, row) -> tuple[dict | None, str]:
     return res, ""
 
 
+def _where(conn, row) -> dict | None:
+    """Where the project installs and why (contract section 17), or None when
+    it has no target/token yet or the target cannot be reached."""
+    if row["target_id"] is None:
+        return None
+    try:
+        return targets.project_adom(conn, row, g.user)
+    except (NotReady, SatomError):
+        return None
+
+
 def _publisher_hint(res: dict) -> None:
     """A package signed by THIS installation's key that the target does not
     trust yet: say what to do (register the key), not only what is wrong."""
@@ -136,7 +147,10 @@ def project_get(pid):
     row, err = _project(pid)
     if err:
         return err
-    return projects.to_api(db.get(), row)
+    conn = db.get()
+    out = projects.to_api(conn, row)
+    out["where"] = _where(conn, row)
+    return out
 
 
 @bp.put("/projects/<int:pid>")
@@ -163,6 +177,7 @@ def project_put(pid):
         projects.set_last_check(conn, pid, "local", result)
         row = projects.get_row(conn, pid)
     out = projects.to_api(conn, row)
+    out["where"] = _where(conn, row)
     out["local_check"] = result
     if result is None:
         out["local_check_note"] = note
@@ -285,13 +300,14 @@ def _remote(pid: int, action: str, call):
     try:
         t, snap = targets.context_for_project(conn, row, g.user)
         _, data = _build(conn, row, snap)
-        with targets.client(conn, t, g.user.id) as c:
+        with targets.client(conn, t, g.user.id, adom=targets.call_adom(snap)) as c:
             res = call(c, data)
     except Exception as exc:  # noqa: BLE001
         audit(f"satom.{action}", row["slug"], ok=False,
               error=getattr(exc, "code", type(exc).__name__))
         return _fail(exc)
     audit(f"satom.{action}", row["slug"], target=t["name"],
+          adom=targets.call_adom(snap) or str(snap.get("product") or ""),
           ok=bool(res.get("ok")) if isinstance(res, dict) else None)
     if action == "validate" and isinstance(res, dict):
         projects.set_last_check(conn, pid, "remote", res)
@@ -398,7 +414,7 @@ def _generation_context(row, body):
     prof = get_profile(conn, prof_id)
     if prof is None or not prof["enabled"]:
         raise NotReady("That AI profile does not exist or is disabled.", "no_profile", 404)
-    t, snap = targets.context_for_project(conn, row, g.user)
+    t, snap = targets.context_for_project(conn, row, g.user, purpose="generate")
     pack = targets.rules_pack(conn, t, g.user.id, snap)
     return prof, t, snap, pack, prompt
 

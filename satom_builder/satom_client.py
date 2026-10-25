@@ -106,12 +106,20 @@ def ssl_context(ca_pem: str = "", verify: bool = True):
     return True
 
 
+#: The routes that run in an ADOM (contract section 17): the library is the
+#: whole connection's, the rules pack and the publishers have no ADOM.
+ADOM_ROUTES = ("/target", "/validate", "/rehearse", "/import", "/data")
+
+
 class SatomClient:
     def __init__(self, base_url: str, token: str, *, ca_pem: str = "",
                  verify_tls: bool = True, timeout: float = 60.0,
-                 transport: httpx.BaseTransport | None = None):
+                 transport: httpx.BaseTransport | None = None, adom: str | None = None):
         self.base_url = check_base_url(base_url)
         self._token = token or ""
+        #: ``?adom=`` on the ADOM routes; None = the token's own ADOM (a token
+        #: bound to one, or a SATOM older than section 17)
+        self.adom = adom or None
         kw = {"timeout": httpx.Timeout(timeout, connect=10.0),
               "headers": {"Accept": "application/json",
                           "User-Agent": "satom-builder"},
@@ -142,6 +150,8 @@ class SatomClient:
                              "under My tokens.", "no_token", 409)
         headers = {"Authorization": "Bearer " + self._token}
         url = self.base_url + PREFIX + route
+        if self.adom and route.split("?", 1)[0] in ADOM_ROUTES:
+            params = dict(params or {}, adom=self.adom)
         try:
             with self._http.stream(method, url, headers=headers, files=files, data=data,
                                    json=json_body, params=params) as r:

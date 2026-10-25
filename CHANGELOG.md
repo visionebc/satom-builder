@@ -7,6 +7,35 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Added
 
+- **Every project installs in the right SATOM ADOM, and nobody has to pick
+  it.** Requested: "nowhere in the Builder does it say I have to choose the
+  ADOM; and what if I want something from two ADOMs, like every firewall
+  rule that holds the IPs of the FortiWeb interfaces? Make it see every
+  dataset SATOM has, the basics by default, so the user can see and pick
+  them" (contract section 17; needs the SATOM side of it, SATOM `f165d70d`).
+  - The project's ADOM follows what it reads: one product's datasets → that
+    product's ADOM; datasets of more than one product → **Global** (opened
+    from SATOM's Global console); no product dataset → Global. The editor's
+    header says **Installs in: …** and changes the moment a dataset is
+    ticked (`adom.js`, the server's own rule run in the page; the server
+    stays the authority and answers `where` on every save). Project details
+    offers **Auto** or any ADOM the token reaches, and warns when a fixed
+    ADOM does not offer what the plugin reads.
+  - Every call to SATOM for a project runs in that ADOM (`?adom=`): check,
+    validate, rehearse, import, test data. Generate and the assistant ask
+    SATOM in Global, so the AI sees every dataset; the ADOM then follows
+    what it picked. The prompt states the rule ("never say a listed dataset
+    does not exist").
+  - The Datasets tab groups every dataset by ADOM -- the basics every ADOM
+    offers first and open, then one group per product -- and, with a token
+    bound to one ADOM, lists the datasets SATOM has in other ADOMs with the
+    ADOM that holds them, instead of offering them or calling them missing.
+  - **My tokens** says what each connection reaches: a Global token with
+    the datasets of every ADOM you may enter, or a token bound to one ADOM
+    with how many datasets it cannot reach and the advice to use a Global
+    one. Test says it too.
+  - A SATOM without section 17 works as before (the token's ADOM).
+
 - **Generate and the assistant show what the AI is doing, as it happens.**
   Requested: "it must show what it is doing, not just say generating: that is
   useless, you cannot see beyond it". Both adapters now stream: the
@@ -77,6 +106,12 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   cannot be continued (404, the same as a missing one).
 
 ### Fixed
+
+- **Replacing a token kept the old token's library.** The Library, the
+  Datasets tab and the AI kept listing what the previous token reached until
+  the cache expired; a new or removed token now drops that link's library
+  and snapshots. The snapshot cache is per ADOM (schema 8).
+
 
 - **A Generate cut off by a restart is failed at once, not an hour later.**
   An update restarted the lab while an author's Generate ran: the job stayed
