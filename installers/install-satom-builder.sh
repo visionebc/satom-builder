@@ -38,7 +38,7 @@
 # ============================================================================
 set -euo pipefail
 
-VERSION="0.1.5"
+VERSION="0.1.6"
 APP_DIR="/opt/satom-builder"
 ETC_DIR="/etc/satom-builder"
 PKI_DIR="${ETC_DIR}/pki"
@@ -802,10 +802,13 @@ else
     [[ "$GIT_URL" =~ ^https:// ]] || die "SETUP_GIT_URL must be an https:// URL"
     ask GIT_REF "Branch or tag " "main" SETUP_GIT_REF
 fi
-case "$SRC_TREE/" in
-    "$(cd "$APP_DIR" 2>/dev/null && pwd -P)/"*)
-        die "This installer runs from inside ${APP_DIR}, which the service account owns. Run it from a release bundle or a checkout outside ${APP_DIR}." ;;
-esac
+if [ -d "$APP_DIR" ]; then
+    _app_real="$(cd "$APP_DIR" && pwd -P)"
+    case "$SRC_TREE/" in
+        "$_app_real/"*)
+            die "This installer runs from inside ${APP_DIR}, which the service account owns. Run it from a release bundle or a checkout outside ${APP_DIR}." ;;
+    esac
+fi
 CODE_SRC="$PAYLOAD_SRC"
 if [ "$EXISTING" -eq 1 ] && [ -d "${APP_DIR}/satom_builder" ]; then
     CODE_SRC="keep"
@@ -1033,7 +1036,11 @@ DEPLOY_DIR="$ROOT_STAGE/release/deploy"
 # From here on the tree is the service account's, and so is everything that
 # EXECUTES from it: the venv, pip, manage. Root running ${APP_DIR}/venv/bin/python
 # on a re-run would run whatever that account put there.
-chown -R -h "${APP_USER}:${APP_USER}" "$APP_DIR"
+# .env is left out: it stays root's (root:<account> 0640) -- re-owning it here
+# would make the next step refuse it as the account's. find does not follow
+# links (-P) and chown -h re-owns a link itself.
+find "$APP_DIR" -path "$APP_DIR/.env" -prune -o -exec chown -h "${APP_USER}:${APP_USER}" {} + \
+    || die "Could not hand ${APP_DIR} to ${APP_USER}"
 as_app() { runuser -u "$APP_USER" -- env HOME="$APP_DIR" PATH=/usr/sbin:/usr/bin:/sbin:/bin "$@"; }
 cd "$APP_DIR"
 if [ ! -x venv/bin/python ]; then

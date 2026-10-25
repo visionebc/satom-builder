@@ -118,8 +118,8 @@ there is no built-in address; the public repository is
 Copy the bundle **and its `.sha256`** to the target, then:
 
 ```bash
-sha256sum -c satom-builder-offline-0.1.5-debian12-amd64.tar.gz.sha256
-tar xzf satom-builder-offline-0.1.5-debian12-amd64.tar.gz
+sha256sum -c satom-builder-offline-0.1.6-debian12-amd64.tar.gz.sha256
+tar xzf satom-builder-offline-0.1.6-debian12-amd64.tar.gz
 cd satom-builder-installer
 sudo bash satom-builder-setup.sh
 ```
@@ -131,7 +131,7 @@ the extracted folder: it installs `tar` from the bundle before anything else.
 or let the guided installer verify and extract it:
 
 ```bash
-sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.5-rhel9-x86_64.tar.gz
+sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.6-rhel9-x86_64.tar.gz
 ```
 
 A bundle holds **one** family: `bundle/debs/` (Debian 12), `bundle/rpms/`
@@ -313,6 +313,17 @@ an imported certificate are kept. It re-applies packages, the venv's
 requirements, the layout and permissions, units, the CLI and runner copies, the
 vhost and the certificate (reissued only when a name was added or it is about
 to expire).
+
+A re-run never trusts what the service account can write. The units, the CLI,
+the update runner, the release keys and the TLS helper are installed from the
+release you run the installer FROM (keep the bundle or checkout), not from
+`/opt/satom-builder/deploy`; the venv, `pip` and `manage` run as the service
+account; `.env` is never executed as root. Run the installer from outside
+`/opt/satom-builder` (it refuses otherwise). It stops, without changing
+anything, when `.env` is not owned by root or when a path it writes in the
+tree (`data/`, its queue directories, `state/`, `.env`, `data/.installed`, the
+log directory) is a symbolic link: inspect it -- the service account may have
+been compromised -- restore it (`.env` is `root:satom-builder 0640`) and re-run.
 
 ### Uninstall / revert
 

@@ -28,7 +28,7 @@
 set -Eeuo pipefail
 
 # The release this script installs: the same one it is published with.
-SETUP_VERSION="0.1.5"
+SETUP_VERSION="0.1.6"
 LOG="/var/log/satom-builder-setup.log"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENGINE_NAME="install-satom-builder.sh"
