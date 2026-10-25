@@ -1,0 +1,4 @@
+# The real SATOM rules pack used by the tests holds SATOM's dev source, which
+# carries internal names the public SATOM mirror redacts: it never travels in a
+# package, a bundle or a release (all are built with git archive).
+tests/fixtures/satom-rules-runtime.zip export-ignore
