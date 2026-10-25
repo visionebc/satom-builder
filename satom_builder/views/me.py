@@ -97,6 +97,7 @@ def publisher_register(tid):
         audit("publisher.register", t["name"], ok=False, error=exc.code)
         flash(exc.message, "danger")
     else:
+        targets.forget_snapshots(conn, t["id"])
         audit("publisher.register", t["name"], ok=True, key_id=info["key_id"])
         kid = (res or {}).get("key_id", info["key_id"])
         flash(f"Publisher key registered on {t['name']} (key_id {kid[:16]}...).", "success")

@@ -61,6 +61,13 @@ def client(conn, target_row, user_id: int) -> SatomClient:
                        transport=cfg.get(TRANSPORT_KEY))
 
 
+def forget_snapshots(conn, target_id: int) -> None:
+    """Drop every author's cached snapshot of a target: after something that
+    changes what the target answers (a publisher registered on it), a cached
+    one would make the local check disagree with SATOM."""
+    conn.execute("DELETE FROM snapshots WHERE target_id = ?", (target_id,))
+
+
 def snapshot(conn, target_row, user_id: int, refresh: bool = False) -> dict:
     """The cached target snapshot, refetched when older than the TTL."""
     ttl = float(current_app.config["SATOM_BUILDER_SNAPSHOT_TTL"])

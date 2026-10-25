@@ -98,7 +98,24 @@ def _local_check(conn, row) -> tuple[dict | None, str]:
     except (NotReady, SatomError, rules.RulesError) as exc:
         return None, getattr(exc, "message", None) or str(exc)
     res = pack.check(data, snap, "builder")
+    _publisher_hint(res)
     return res, ""
+
+
+def _publisher_hint(res: dict) -> None:
+    """A package signed by THIS installation's key that the target does not
+    trust yet: say what to do (register the key), not only what is wrong."""
+    try:
+        kid = package.publisher_info(current_app.config["SATOM_BUILDER_PUBLISHER_KEY"])["key_id"]
+    except Exception:  # noqa: BLE001 -- no key: nothing to hint
+        return
+    if not kid:
+        return
+    for p in (res or {}).get("problems") or []:
+        msg = str(p.get("message") or "")
+        if "does not trust" in msg and kid[:16] in msg and "Publisher page" not in msg:
+            p["message"] = (msg + " -- this is this installation's publisher key: register it "
+                            "on the target (Publisher page; needs a super-admin token there).")
 
 
 # --------------------------------------------------------------------------
