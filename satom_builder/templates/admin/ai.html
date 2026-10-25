@@ -35,6 +35,7 @@
   <div class="fw-card-header"><h2 class="fw-card-title">{{ 'Edit ' ~ edit.name if edit else 'Add a profile' }}</h2></div>
   <div class="fw-card-body">
     <p class="sb-help">Two adapters. <strong>Anthropic</strong> uses the official SDK (default model <span class="sb-mono">claude-opus-5-5</span>, streaming, the author guide cached as the fixed system block). <strong>OpenAI-compatible</strong> covers OpenAI, Azure OpenAI, Mistral, Gemini's compatible endpoint, Ollama, vLLM and LM Studio: give the base URL that ends before <span class="sb-mono">/chat/completions</span> (for example <span class="sb-mono">https://api.openai.com/v1</span> or <span class="sb-mono">http://127.0.0.1:11434/v1</span>); local servers need no key. Keys are encrypted at rest and never shown again.</p>
+    <p class="sb-help"><strong>Context window.</strong> A request carries SATOM's author guide (about 5,000 tokens) plus the target's schema: about 7,000 tokens for a view and up to 30,000 for an app. Hosted models have room. A local server truncates silently at its own default (Ollama: 2,048–4,096 tokens), and the model then never sees the output contract. Start Ollama with <span class="sb-mono">OLLAMA_CONTEXT_LENGTH=32768</span> or more, or the equivalent setting of your server.</p>
     <form method="post" action="{{ url_for('admin.ai_save') }}" class="row g-3" style="max-width: 900px" autocomplete="off">
       {{ m.csrf() }}
       {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}

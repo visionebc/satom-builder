@@ -143,6 +143,12 @@ Authors pick a profile for each generation. Fields:
 | Refusal fallbacks | Anthropic only, and only on Anthropic's own API: a declined request is retried on Anthropic's recommended fallback model. On by default; the list shows *n/a here* for other base URLs. |
 | Enabled | Disabled profiles are hidden from authors. |
 
+**Context window.** A request carries SATOM's author guide (about 5,000 tokens) plus the target's schema:
+about 7,000 tokens for a view and up to 30,000 for an app. Hosted models have room. A local server
+truncates silently at its own default (Ollama: 2,048–4,096 tokens), and the model then never sees the
+output contract. Start Ollama with `OLLAMA_CONTEXT_LENGTH=32768` or more, or the equivalent setting
+of your server.
+
 **Test** sends a tiny prompt and shows the answer or the provider's error.
 
 ### Users

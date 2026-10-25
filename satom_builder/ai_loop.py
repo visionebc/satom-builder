@@ -65,8 +65,22 @@ class ParseError(ValueError):
 # --------------------------------------------------------------------------
 # what is sent
 # --------------------------------------------------------------------------
-def target_summary(snapshot: dict) -> dict:
-    """Names and shapes only, from an allow-list of snapshot keys."""
+#: What a view or a widget can use from the target: nothing of the app world
+#: (steps, stores, connections...). Sending the whole schema made a view's
+#: request ~27k tokens, past a local model's default context (lab run
+#: 2026-10-25: the model never saw the output contract).
+VIEW_SCHEMA_KEYS = ("datasets", "param_types", "patterns", "limits")
+
+
+def target_summary(snapshot: dict, kind: str = "app") -> dict:
+    """Names and shapes only, from an allow-list of snapshot keys. A view or a
+    widget gets only what a view can use."""
+    if kind in ("view", "widget"):
+        schema = snapshot.get("schema") or {}
+        choices = snapshot.get("choices") or {}
+        return {"satom_version": str(snapshot.get("satom_version", "")),
+                "datasets": [str(d) for d in (choices.get("datasets") or [])],
+                "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS if k in schema}}
     ex = snapshot.get("existing") or {}
     stores = {}
     for slug, s in (ex.get("stores") or {}).items():
@@ -121,12 +135,11 @@ def draft_for_prompt(project: dict) -> dict:
 def build_prompt(author_guide: str, snapshot: dict, project: dict, author_text: str,
                  feedback: str = "") -> tuple[str, str]:
     system = author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT
+    compact = {"sort_keys": True, "ensure_ascii": False, "separators": (",", ":")}
     user = ("# Target SATOM (names and shapes only)\n\n```json\n"
-            + json.dumps(target_summary(snapshot), indent=1, sort_keys=True,
-                         ensure_ascii=False)
+            + json.dumps(target_summary(snapshot, str(project.get("kind") or "app")), **compact)
             + "\n```\n\n# Current draft (" + str(project.get("kind")) + ")\n\n```json\n"
-            + json.dumps(draft_for_prompt(project), indent=1, sort_keys=True,
-                         ensure_ascii=False)
+            + json.dumps(draft_for_prompt(project), **compact)
             + "\n```\n\n# What the author wants\n\n" + author_text.strip() + "\n")
     if feedback:
         user += "\n# Fix these problems in your previous answer\n\n" + feedback + "\n"
