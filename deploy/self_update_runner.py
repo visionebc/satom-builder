@@ -225,9 +225,11 @@ def manage(*args, timeout=600):
 
 
 def _current_version():
+    """APP/VERSION, read without following a link and only when it holds a
+    version: the status file the account reads repeats it."""
     try:
-        return (APP / "VERSION").read_text().strip()
-    except OSError:
+        return _load_update_package().read_version_file(APP / "VERSION")
+    except Exception:  # noqa: BLE001 -- an unreadable version is no version
         return ""
 
 

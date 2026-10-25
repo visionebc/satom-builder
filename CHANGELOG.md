@@ -33,6 +33,9 @@ node.**
   `rollback --restore-db`, the databases. The package is copied to root-only
   staging through a descriptor before it is verified, and the database backups
   are read the same way.
+- **`VERSION` and the status files are read without following a link.** The
+  runner repeated `VERSION` in the status file the service account reads, so a
+  link there disclosed any root-readable file; only a plain version is kept.
 - **`.env` is read only when it is a regular file owned by root.** A link put
   in its place made the runner read any `KEY=value` file root can read (another
   product's secrets) and pass it to a process running as the service account.

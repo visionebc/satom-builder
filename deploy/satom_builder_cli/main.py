@@ -69,9 +69,17 @@ def _app_user():
 
 def _version():
     try:
-        return (APP_DIR / "VERSION").read_text().strip()
-    except OSError:
+        return _up().read_version_file(APP_DIR / "VERSION") or "?"
+    except Exception:  # noqa: BLE001
         return "?"
+
+
+def _read_status(path):
+    """A status JSON of the app's queue, read without following a link."""
+    raw = _up().read_small_nofollow(path, 1024 * 1024)
+    if raw is None:
+        raise ValueError("not a regular file")
+    return json.loads(raw.decode("utf-8"))
 
 
 def _load_root_module(filename, modname):
@@ -106,7 +114,7 @@ def _statuses():
     try:
         for p in STA.glob("*.json"):
             try:
-                d = json.loads(p.read_text())
+                d = _read_status(p)
             except (OSError, ValueError):
                 continue
             if isinstance(d, dict):
@@ -263,7 +271,7 @@ def wait_for(uid, timeout):
     shown_current = None
     while time.time() < deadline:
         try:
-            d = json.loads(path.read_text())
+            d = _read_status(path)
         except (OSError, ValueError):
             time.sleep(2)
             continue

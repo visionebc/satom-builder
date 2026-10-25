@@ -496,6 +496,29 @@ def open_file_nofollow(dir_fd, name, owner_uid=None):
         raise
 
 
+def read_small_nofollow(path, limit=64 * 1024):
+    """Bytes of a small regular file reached WITHOUT following a link in its
+    last component, or None. For files root reads in the service account's
+    tree (VERSION, status JSON): a link there would otherwise make root read
+    any file and repeat its content where that account can see it."""
+    try:
+        fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    with os.fdopen(fd, "rb") as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+            return None
+        data = fh.read(limit + 1)
+    return data if len(data) <= limit else None
+
+
+def read_version_file(path) -> str:
+    """The VERSION file's version, or "" when it is not a plain version."""
+    raw = read_small_nofollow(path, 128)
+    text = (raw or b"").decode("ascii", "replace").strip()
+    return text if VERSION_RE.match(text) and len(text) <= 64 else ""
+
+
 def file_chunks(fh, size=1 << 20):
     """Iterate a binary file in ``size`` blocks."""
     return iter(lambda: fh.read(size), b"")
