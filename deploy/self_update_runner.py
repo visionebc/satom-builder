@@ -646,23 +646,39 @@ def remove_in_tree(rels):
 
 def _chown_tree():
     """Give the tree back to the service account (vendored). ``.env`` stays
-    root:<account> 0640, set through an O_NOFOLLOW fd."""
+    root:<account> 0640.
+
+    The tree-wide ``chown -R`` re-owns ``.env`` too, so the file is opened
+    (O_NOFOLLOW) BEFORE it, and the same inode is re-sealed afterwards through
+    that descriptor -- but only when it was root's to begin with. A ``.env`` the
+    account wrote (it owns the directory and can replace the file) is never
+    adopted as root's: the installer and app_env() trust a root-owned one."""
     if not APP_USER or APP_USER == "root":
         return True, "running un-deprivileged; nothing to hand back"
-    # -h: a link in the tree is re-owned itself, never the file it names.
-    r = subprocess.run(["chown", "-R", "-h", "%s:%s" % (APP_USER, APP_USER), str(APP)],
-                       capture_output=True, text=True, timeout=600)
+    env_fd, env_was_roots = None, False
     try:
-        import grp
-        fd = os.open(str(APP / ".env"), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        try:
-            if stat.S_ISREG(os.fstat(fd).st_mode):
-                os.fchown(fd, 0, grp.getgrnam(APP_USER).gr_gid)
-                os.fchmod(fd, 0o640)
-        finally:
-            os.close(fd)
-    except (OSError, KeyError):
+        env_fd = os.open(str(APP / ".env"), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        st_ = os.fstat(env_fd)
+        env_was_roots = stat.S_ISREG(st_.st_mode) and st_.st_uid == 0
+        if stat.S_ISREG(st_.st_mode) and not env_was_roots:
+            _log("%s/.env is owned by uid %d, not root: left as it is (and ignored); "
+                 "restore it as root:%s 0640" % (APP, st_.st_uid, APP_USER))
+    except OSError:
         pass
+    try:
+        # -h: a link in the tree is re-owned itself, never the file it names.
+        r = subprocess.run(["chown", "-R", "-h", "%s:%s" % (APP_USER, APP_USER), str(APP)],
+                           capture_output=True, text=True, timeout=600)
+        if env_fd is not None and env_was_roots:
+            try:
+                import grp
+                os.fchown(env_fd, 0, grp.getgrnam(APP_USER).gr_gid)
+                os.fchmod(env_fd, 0o640)
+            except (OSError, KeyError):
+                pass
+    finally:
+        if env_fd is not None:
+            os.close(env_fd)
     return r.returncode == 0, (r.stderr or "tree owned by %s" % APP_USER)[:200]
 
 

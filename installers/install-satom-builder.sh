@@ -782,22 +782,33 @@ _sn_short="$(hostname | tr 'A-Z' 'a-z')"
 case " $SERVED_NAMES " in *" $_sn_short "*) : ;; *) SERVED_NAMES="$SERVED_NAMES $_sn_short" ;; esac
 FIRST_NAME="${SERVED_NAMES%% *}"
 
-# Code source (fresh install only: a re-run keeps the installed code).
-CODE_SRC=""; GIT_URL=""; GIT_REF=""; SRC_TREE="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ "$EXISTING" -eq 1 ] && [ -d "${APP_DIR}/satom_builder" ]; then
-    CODE_SRC="keep"
-elif [ "$OFFLINE" -eq 1 ]; then
-    CODE_SRC="bundle"
+# The RELEASE this installer belongs to (PAYLOAD_SRC) is read on every run:
+# root-side files (units, the operator CLI, the update runner, release keys,
+# the TLS helper) are taken from a root-only copy of it, never from
+# ${APP_DIR}/deploy -- on a re-run that directory belongs to the service
+# account, and root would install (and run) whatever it wrote there. The CODE
+# is only written on a fresh install (CODE_SRC); a re-run keeps it.
+PAYLOAD_SRC=""; GIT_URL=""; GIT_REF=""; SRC_TREE="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+if [ "$OFFLINE" -eq 1 ]; then
+    PAYLOAD_SRC="bundle"
 elif [ -n "${SETUP_APP_TARBALL:-}" ]; then
     [ -f "$SETUP_APP_TARBALL" ] || die "SETUP_APP_TARBALL=${SETUP_APP_TARBALL} does not exist"
-    CODE_SRC="tarball"
+    PAYLOAD_SRC="tarball"
 elif [ -f "$SRC_TREE/VERSION" ] && [ -d "$SRC_TREE/satom_builder" ] && [ -f "$SRC_TREE/requirements.txt" ]; then
-    CODE_SRC="checkout"
+    PAYLOAD_SRC="checkout"
 else
-    CODE_SRC="git"
+    PAYLOAD_SRC="git"
     ask GIT_URL "Repository URL to install the code from (https://...) " "" SETUP_GIT_URL
     [[ "$GIT_URL" =~ ^https:// ]] || die "SETUP_GIT_URL must be an https:// URL"
     ask GIT_REF "Branch or tag " "main" SETUP_GIT_REF
+fi
+case "$SRC_TREE/" in
+    "$(cd "$APP_DIR" 2>/dev/null && pwd -P)/"*)
+        die "This installer runs from inside ${APP_DIR}, which the service account owns. Run it from a release bundle or a checkout outside ${APP_DIR}." ;;
+esac
+CODE_SRC="$PAYLOAD_SRC"
+if [ "$EXISTING" -eq 1 ] && [ -d "${APP_DIR}/satom_builder" ]; then
+    CODE_SRC="keep"
 fi
 
 # Administrator.
@@ -948,31 +959,48 @@ else
     ok "Service account ${APP_USER} already exists -- reused"
 fi
 
-deploy_code() {
-    mkdir -p "$APP_DIR"
-    case "$CODE_SRC" in
-        keep)
-            ok "Code kept as installed (version $(cat "$APP_DIR/VERSION" 2>/dev/null || echo '?')); updates use signed packages"
-            return 0 ;;
-        bundle)  tar -xzf "$BUNDLE_DIR/app.tar.gz" -C "$APP_DIR" || die "Could not extract bundle/app.tar.gz" ;;
-        tarball) tar -xzf "$SETUP_APP_TARBALL" -C "$APP_DIR" || die "Could not extract ${SETUP_APP_TARBALL}" ;;
+# Root-only scratch: the release's files staged for root (and a git clone).
+ROOT_STAGE="$(mktemp -d)"; chmod 0700 "$ROOT_STAGE"
+trap 'rm -rf "$ROOT_STAGE"' EXIT
+# export_payload DEST -- the release's tree into DEST (a directory root owns).
+export_payload() {
+    local dest="$1"
+    case "$PAYLOAD_SRC" in
+        bundle)  tar -xzf "$BUNDLE_DIR/app.tar.gz" -C "$dest" || die "Could not extract bundle/app.tar.gz" ;;
+        tarball) tar -xzf "$SETUP_APP_TARBALL" -C "$dest" || die "Could not extract ${SETUP_APP_TARBALL}" ;;
         checkout)
             if git -C "$SRC_TREE" rev-parse --verify -q HEAD >/dev/null 2>&1; then
-                git -C "$SRC_TREE" archive --format=tar HEAD | tar -x -C "$APP_DIR" \
+                git -C "$SRC_TREE" archive --format=tar HEAD | tar -x -C "$dest" \
                     || die "git archive of ${SRC_TREE} failed"
             else
                 tar -C "$SRC_TREE" --exclude=./.git --exclude=./venv --exclude=./.venv \
                     --exclude=./data --exclude=./state --exclude=./dist --exclude=./.env \
-                    -cf - . | tar -x -C "$APP_DIR" || die "Could not copy ${SRC_TREE}"
+                    -cf - . | tar -x -C "$dest" || die "Could not copy ${SRC_TREE}"
             fi ;;
         git)
-            local t; t="$(mktemp -d)"
-            git clone -q --depth 1 --branch "$GIT_REF" "$GIT_URL" "$t/src" >>"$INSTALL_LOG" 2>&1 \
-                || { rm -rf "$t"; die "git clone failed (check $INSTALL_LOG; the URL itself is not logged)"; }
-            git -C "$t/src" archive --format=tar HEAD | tar -x -C "$APP_DIR" \
-                || { rm -rf "$t"; die "Could not export the cloned tree"; }
-            rm -rf "$t" ;;
+            if [ ! -d "$ROOT_STAGE/clone" ]; then
+                git clone -q --depth 1 --branch "$GIT_REF" "$GIT_URL" "$ROOT_STAGE/clone" >>"$INSTALL_LOG" 2>&1 \
+                    || die "git clone failed (check $INSTALL_LOG; the URL itself is not logged)"
+            fi
+            git -C "$ROOT_STAGE/clone" archive --format=tar HEAD | tar -x -C "$dest" \
+                || die "Could not export the cloned tree" ;;
     esac
+}
+
+deploy_code() {
+    case "$CODE_SRC" in
+        keep)
+            ok "Code kept as installed (version $(cat "$APP_DIR/VERSION" 2>/dev/null || echo '?')); updates use signed packages"
+            return 0 ;;
+    esac
+    # Fresh install: root creates ${APP_DIR}, so no other account can have
+    # planted anything in it. One that already exists and is not root's (a
+    # half-removed earlier install) is not written into by root.
+    if [ -e "$APP_DIR" ] && [ "$(stat -c %u "$APP_DIR")" != 0 ]; then
+        die "${APP_DIR} exists, holds no installation and is not owned by root -- remove it (or restore the installation) and re-run"
+    fi
+    mkdir -p "$APP_DIR"
+    export_payload "$APP_DIR"
     [ -f "$APP_DIR/VERSION" ] && [ -d "$APP_DIR/satom_builder" ] && [ -f "$APP_DIR/requirements.txt" ] \
         || die "The code in ${APP_DIR} is incomplete (VERSION, satom_builder/ and requirements.txt are required)"
     # [ADOPT-TREE] Every update package leans on git (rollback snapshot, dropped
@@ -994,19 +1022,38 @@ deploy_code
 APP_VERSION="$(tr -d ' \t\r\n' < "$APP_DIR/VERSION")"
 [ "$APP_VERSION" = "$VERSION" ] || warn "This installer is ${VERSION}; the code is ${APP_VERSION}"
 
+
+# The release's own files, for root (step 5/6). Never ${APP_DIR}/deploy.
+mkdir -p "$ROOT_STAGE/release"
+export_payload "$ROOT_STAGE/release"
+DEPLOY_DIR="$ROOT_STAGE/release/deploy"
+[ -f "$DEPLOY_DIR/install-runner.sh" ] && [ -f "$DEPLOY_DIR/install-cli.sh" ] \
+    || die "The release (${PAYLOAD_SRC}) has no deploy/install-runner.sh / install-cli.sh"
+
+# From here on the tree is the service account's, and so is everything that
+# EXECUTES from it: the venv, pip, manage. Root running ${APP_DIR}/venv/bin/python
+# on a re-run would run whatever that account put there.
+chown -R -h "${APP_USER}:${APP_USER}" "$APP_DIR"
+as_app() { runuser -u "$APP_USER" -- env HOME="$APP_DIR" PATH=/usr/sbin:/usr/bin:/sbin:/bin "$@"; }
 cd "$APP_DIR"
 if [ ! -x venv/bin/python ]; then
-    "$PYBIN" -m venv venv || die "Could not create the venv with ${PYBIN}"
+    as_app "$PYBIN" -m venv "$APP_DIR/venv" || die "Could not create the venv with ${PYBIN}"
 fi
 if [ $OFFLINE -eq 1 ]; then
-    venv/bin/python -m pip install -q --no-index --find-links "$BUNDLE_DIR/wheels" --upgrade pip >>"$INSTALL_LOG" 2>&1 || true
-    venv/bin/python -m pip install -q --no-index --find-links "$BUNDLE_DIR/wheels" -r requirements.txt >>"$INSTALL_LOG" 2>&1 \
+    # The bundle may sit where the service account cannot read: its wheels are
+    # copied to a world-readable directory root owns.
+    WHEELS="$ROOT_STAGE/wheels"; install -d -m 0755 "$WHEELS"
+    cp "$BUNDLE_DIR"/wheels/*.whl "$WHEELS"/ && chmod 0644 "$WHEELS"/*.whl
+    chmod 0711 "$ROOT_STAGE"
+    as_app "$APP_DIR/venv/bin/python" -m pip install -q --no-cache-dir --no-index --find-links "$WHEELS" --upgrade pip >>"$INSTALL_LOG" 2>&1 || true
+    as_app "$APP_DIR/venv/bin/python" -m pip install -q --no-cache-dir --no-index --find-links "$WHEELS" -r "$APP_DIR/requirements.txt" >>"$INSTALL_LOG" 2>&1 \
         || die "offline pip install failed (check $INSTALL_LOG)"
+    chmod 0700 "$ROOT_STAGE"; rm -rf "$WHEELS"
 else
-    venv/bin/python -m pip install -q --upgrade pip >>"$INSTALL_LOG" 2>&1 || true
-    venv/bin/python -m pip install -q -r requirements.txt >>"$INSTALL_LOG" 2>&1 || die "pip install failed (check $INSTALL_LOG)"
+    as_app "$APP_DIR/venv/bin/python" -m pip install -q --no-cache-dir --upgrade pip >>"$INSTALL_LOG" 2>&1 || true
+    as_app "$APP_DIR/venv/bin/python" -m pip install -q --no-cache-dir -r "$APP_DIR/requirements.txt" >>"$INSTALL_LOG" 2>&1 || die "pip install failed (check $INSTALL_LOG)"
 fi
-ok "Virtual environment ready ($(venv/bin/python --version 2>&1))"
+ok "Virtual environment ready ($(as_app "$APP_DIR/venv/bin/python" --version 2>&1)), owned and run by ${APP_USER}"
 
 # Layout. The service account owns the tree (it is what update packages
 # replace) except .env (root:<account> 0640: the app only READS its secrets).
@@ -1024,12 +1071,15 @@ refuse_links_in_tree() {
     return 0
 }
 refuse_links_in_tree
-install -d -m 0750 "$APP_DIR/data" "$APP_DIR/data/update-requests" "$APP_DIR/data/update-status" \
-                   "$APP_DIR/data/update-uploads" "$LOG_DIR"
-install -d -m 0700 "$APP_DIR/state"
-chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$LOG_DIR"
-chmod 0750 "$APP_DIR" "$APP_DIR/data"
-chmod 0700 "$APP_DIR/state"
+# Inside the tree the ACCOUNT creates and narrows its own directories; root
+# only owns the log directory (its parent is root's).
+as_app install -d -m 0750 "$APP_DIR/data" "$APP_DIR/data/update-requests" "$APP_DIR/data/update-status" \
+                   "$APP_DIR/data/update-uploads" || die "Could not create ${APP_DIR}/data"
+as_app install -d -m 0700 "$APP_DIR/state" || die "Could not create ${APP_DIR}/state"
+as_app chmod 0750 "$APP_DIR" "$APP_DIR/data"
+as_app chmod 0700 "$APP_DIR/state"
+install -d -m 0750 "$LOG_DIR"
+chown -h "${APP_USER}:${APP_USER}" "$LOG_DIR"
 install -d -m 0755 -o root -g root "$ETC_DIR" "$TRUST_DIR"
 install -d -m 0750 -o root -g "$APP_USER" "$PUBLISHER_DIR"
 ok "Layout: ${APP_DIR} (${APP_USER}), data/ 0750, state/ 0700, ${ETC_DIR} root"
@@ -1046,55 +1096,110 @@ ENVF="$APP_DIR/.env"
 if [ -L "$ENVF" ] || { [ -e "$ENVF" ] && [ ! -f "$ENVF" ]; }; then
     die "$ENVF is a symlink or not a regular file -- refusing to write it as root (inspect it, remove it, re-run)"
 fi
+# .env is root's (root:<account> 0640): one the account could have written is
+# not appended to and handed root ownership here.
+if [ -f "$ENVF" ] && { [ "$(stat -c %u "$ENVF")" != 0 ] || [ -n "$(find "$ENVF" -perm /022 -print)" ]; }; then
+    die "$ENVF is not owned by root, or is group/world writable -- inspect it (the service account may have replaced it), fix it to root:${APP_USER} 0640, re-run"
+fi
 env_has() { [ -f "$ENVF" ] && grep -qE "^$1=." "$ENVF"; }
+# Every write to .env goes through a descriptor: created O_EXCL|O_NOFOLLOW,
+# appended O_NOFOLLOW to a regular file root owns, owner and mode set on the
+# descriptor. Its directory is the service account's, so a check followed by
+# a write BY PATH could be raced with a link.
+env_write() {  # env_write create|append|seal TEXT
+    "$PYBIN" -I -c '
+import grp, os, stat, sys
+mode, path, text, group = sys.argv[1:5]
+if mode == "create":
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+else:
+    fd = os.open(path, (os.O_WRONLY | os.O_APPEND if mode == "append" else os.O_RDONLY)
+                 | os.O_NOFOLLOW | os.O_NONBLOCK)
+st = os.fstat(fd)
+if not stat.S_ISREG(st.st_mode) or st.st_uid != 0:
+    sys.exit("%s is not a regular file owned by root" % path)
+if mode in ("create", "append"):
+    os.write(fd, text.encode())
+if mode == "seal":
+    os.fchown(fd, 0, grp.getgrnam(group).gr_gid)
+    os.fchmod(fd, 0o640)
+os.close(fd)
+' "$1" "$ENVF" "${2:-}" "$APP_USER" || die "Could not write ${ENVF} safely"
+}
 env_add() {  # env_add KEY VALUE -- only when missing: secrets are NEVER regenerated
     env_has "$1" && return 0
-    printf '%s=%s\n' "$1" "$2" >> "$ENVF"
+    env_write append "$(printf '%s=%s\n' "$1" "$2")
+"
 }
 if [ ! -f "$ENVF" ]; then
-    ( umask 077; printf '# Generated by install-satom-builder.sh %s -- %s\n# Keep a copy: FERNET_KEY cannot be regenerated without losing the stored secrets.\n' \
-        "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ENVF" )
+    env_write create "$(printf '# Generated by install-satom-builder.sh %s -- %s\n# Keep a copy: FERNET_KEY cannot be regenerated without losing the stored secrets.' \
+        "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+"
 fi
 env_add SECRET_KEY "$("$PYBIN" -c 'import secrets; print(secrets.token_hex(32))')"
-env_add FERNET_KEY "$(venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
-    || die "Could not generate FERNET_KEY (is cryptography in requirements.txt?)"
+if ! env_has FERNET_KEY; then
+    _fk="$(as_app "$APP_DIR/venv/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
+        && [[ "$_fk" =~ ^[A-Za-z0-9_=-]{44}$ ]] || die "Could not generate FERNET_KEY (is cryptography in requirements.txt?)"
+    env_add FERNET_KEY "$_fk"; unset _fk
+fi
 env_add SATOM_BUILDER_DATA "$APP_DIR/data"
 env_add SATOM_BUILDER_PUBLISHER_KEY "$PUBLISHER_KEY"
 env_add SATOM_BUILDER_BIND "$BIND"
-[ -L "$ENVF" ] && die "$ENVF became a symlink during the install -- refusing"
-chown -h root:"$APP_USER" "$ENVF"; chmod 0640 "$ENVF"
+env_write seal
 ok ".env ready (root:${APP_USER} 0640; existing secrets kept)"
 
-# manage runs AS THE SERVICE ACCOUNT with .env in its environment.
+# manage runs AS THE SERVICE ACCOUNT, which reads .env itself (it is in its
+# group). Root never sources it: a file is shell code, and the account could
+# have put commands there.
+APP_SH='set -a; . "$APP_DIR/.env"; set +a; exec "$APP_DIR/venv/bin/python" -m satom_builder.manage "$@"'
 run_manage() {
-    # shellcheck source=/dev/null
-    ( set -a; . "$ENVF"; set +a
-      cd "$APP_DIR" && runuser -u "$APP_USER" -- env HOME="$APP_DIR" "$APP_DIR/venv/bin/python" -m satom_builder.manage "$@" )
+    ( cd "$APP_DIR" && as_app env APP_DIR="$APP_DIR" sh -c "$APP_SH" satom-builder-manage "$@" )
 }
 run_manage migrate >>"$INSTALL_LOG" 2>&1 \
     || die "manage migrate failed -- the database schema could not be created. Check the end of $INSTALL_LOG"
 ok "Database migrated (SQLite in ${APP_DIR}/data)"
 
-# The publisher key is created by root (its directory is root-owned) and is
-# then made readable by the service account's group only.
-# shellcheck source=/dev/null
-PUB_OUT="$( ( set -a; . "$ENVF"; set +a; cd "$APP_DIR" && "$APP_DIR/venv/bin/python" -m satom_builder.manage keygen-publisher ) 2>>"$INSTALL_LOG" )" \
-    || die "manage keygen-publisher failed (check $INSTALL_LOG)"
-[ -f "$PUBLISHER_KEY" ] || die "manage keygen-publisher did not create ${PUBLISHER_KEY}"
+# The publisher key lives in a root-owned directory, readable by the account's
+# group. The ACCOUNT generates it (the key code is in its venv) into a
+# directory of its own; root copies it in through a descriptor that does not
+# follow a link and checks it is that account's regular file.
+if [ ! -f "$PUBLISHER_KEY" ]; then
+    _kd="$(mktemp -d /run/satom-builder-key.XXXXXX)"; chown "$APP_USER:$APP_USER" "$_kd"; chmod 0700 "$_kd"
+    ( cd "$APP_DIR" && as_app env APP_DIR="$APP_DIR" SATOM_BUILDER_PUBLISHER_KEY_OVERRIDE="$_kd/publisher.key" \
+          sh -c 'set -a; . "$APP_DIR/.env"; set +a; SATOM_BUILDER_PUBLISHER_KEY="$SATOM_BUILDER_PUBLISHER_KEY_OVERRIDE" exec "$APP_DIR/venv/bin/python" -m satom_builder.manage keygen-publisher' ) \
+        >>"$INSTALL_LOG" 2>&1 || { rm -rf "$_kd"; die "manage keygen-publisher failed (check $INSTALL_LOG)"; }
+    ( umask 077; "$PYBIN" -I -c '
+import os, stat, sys
+fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+st = os.fstat(fd)
+if not stat.S_ISREG(st.st_mode) or st.st_uid != int(sys.argv[2]) or st.st_size > 65536:
+    sys.exit("not the account'"'"'s regular key file")
+data = os.read(fd, 65536)
+if b"PRIVATE KEY" not in data:
+    sys.exit("not a PEM private key")
+out = os.open(sys.argv[3], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+os.write(out, data); os.close(out)
+' "$_kd/publisher.key" "$(id -u "$APP_USER")" "$PUBLISHER_KEY" ) || { rm -rf "$_kd"; die "Could not install the publisher key"; }
+    rm -rf "$_kd"
+fi
 chown root:"$APP_USER" "$PUBLISHER_KEY"; chmod 0640 "$PUBLISHER_KEY"
+PUB_OUT="$(run_manage keygen-publisher 2>>"$INSTALL_LOG")" \
+    || die "manage keygen-publisher could not read ${PUBLISHER_KEY} (check $INSTALL_LOG)"
 PUBLISHER_KEY_ID="$(printf '%s\n' "$PUB_OUT" | grep -oE '[0-9a-f]{64}' | head -1 || true)"
 ok "Publisher key ${PUBLISHER_KEY} (root:${APP_USER} 0640)${PUBLISHER_KEY_ID:+, key_id ${PUBLISHER_KEY_ID}}"
 
 if [ "$SET_ADMIN" -eq 1 ]; then
     # The password reaches the app through a 0600 file the service account
     # owns -- never argv (visible in ps) and never the log.
+    # Written BY the account into its own directory (stdin, never argv):
+    # root writing a path in state/ would follow a link planted there.
     PWF="$APP_DIR/state/.admin-password.$$"
-    install -m 0600 -o "$APP_USER" -g "$APP_USER" /dev/null "$PWF"
-    printf '%s' "$ADMIN_PASS" > "$PWF"
+    printf '%s' "$ADMIN_PASS" | as_app sh -c 'umask 077; cat > "$1"' sh "$PWF" \
+        || die "Could not hand the administrator password to the service account"
     if run_manage create-admin --username "$ADMIN_USER" --password-file "$PWF" >>"$INSTALL_LOG" 2>&1; then
-        rm -f "$PWF"
+        as_app rm -f "$PWF"
     else
-        rm -f "$PWF"; die "manage create-admin failed (check $INSTALL_LOG)"
+        as_app rm -f "$PWF"; die "manage create-admin failed (check $INSTALL_LOG)"
     fi
     if [ "$ADMIN_PW_GENERATED" -eq 1 ]; then
         ( umask 077; printf '%s\n' "$ADMIN_PASS" > "$ADMIN_PW_FILE" )
@@ -1106,8 +1211,7 @@ fi
 unset ADMIN_PASS _pw2 SETUP_ADMIN_PASSWORD
 run_manage check >>"$INSTALL_LOG" 2>&1 || die "manage check reports a configuration problem (check $INSTALL_LOG)"
 ok "manage check: configuration sane"
-refuse_links_in_tree
-: > "$APP_DIR/data/.installed"; chown -h "$APP_USER:$APP_USER" "$APP_DIR/data/.installed"
+as_app touch "$APP_DIR/data/.installed" || warn "Could not write the install marker data/.installed"
 
 # -----------------------------------------------------------------------------
 # STEP 5 -- PRIVILEGE MODEL: sudoers, units, CLI, runner, trust store
@@ -1135,13 +1239,13 @@ ok "sudoers: ${APP_USER} may only run 'nginx -t' and 'systemctl reload nginx'"
 # pinned by a DROP-IN, never by editing a unit: every update re-copies the
 # templates. The list is DERIVED (deploy/*.service minus the root runner), the
 # same rule as self_update_runner.NONROOT_UNITS.
-for src in "$APP_DIR"/deploy/*.service "$APP_DIR"/deploy/*.path "$APP_DIR"/deploy/*.timer; do
+for src in "$DEPLOY_DIR"/*.service "$DEPLOY_DIR"/*.path "$DEPLOY_DIR"/*.timer; do
     [ -f "$src" ] || continue
     install -o root -g root -m 0644 "$src" "/etc/systemd/system/$(basename "$src")"
 done
 enforce_unit_user() {
     local src unit d
-    for src in "$APP_DIR"/deploy/*.service; do
+    for src in "$DEPLOY_DIR"/*.service; do
         unit="${src##*/}"
         [ "$unit" = "satom-builder-updater.service" ] && continue
         [ -f "/etc/systemd/system/$unit" ] || continue
@@ -1161,12 +1265,14 @@ enforce_unit_user
 systemctl daemon-reload
 ok "Units installed; service account pinned via drop-in 10-app-user.conf"
 
-bash "$APP_DIR/deploy/install-cli.sh" >>"$INSTALL_LOG" 2>&1 || die "Could not install the operator CLI (check $INSTALL_LOG)"
+SATOM_BUILDER_APP_DIR="$APP_DIR" SATOM_BUILDER_DEPLOY_SRC="$DEPLOY_DIR" \
+    bash "$DEPLOY_DIR/install-cli.sh" >>"$INSTALL_LOG" 2>&1 || die "Could not install the operator CLI (check $INSTALL_LOG)"
 ok "Operator CLI: /usr/local/sbin/satom-builder (root-owned copy)"
-bash "$APP_DIR/deploy/install-runner.sh" >>"$INSTALL_LOG" 2>&1 || die "Could not harden the update runner (check $INSTALL_LOG)"
+SATOM_BUILDER_APP_DIR="$APP_DIR" SATOM_BUILDER_DEPLOY_SRC="$DEPLOY_DIR" \
+    bash "$DEPLOY_DIR/install-runner.sh" >>"$INSTALL_LOG" 2>&1 || die "Could not harden the update runner (check $INSTALL_LOG)"
 ok "Update runner: /usr/local/lib/satom-builder-runner (root-owned copy, drop-in 10-root-copy.conf)"
 SEEDED=0
-for k in "$APP_DIR"/deploy/update-keys/*.pub; do
+for k in "$DEPLOY_DIR"/update-keys/*.pub; do
     [ -f "$k" ] || continue
     install -o root -g root -m 0644 "$k" "$TRUST_DIR/" && SEEDED=$((SEEDED+1))
 done
@@ -1177,7 +1283,7 @@ done
 # STEP 6 -- TLS AND NGINX
 # -----------------------------------------------------------------------------
 say "Step 6/7 -- TLS certificate and nginx"
-TLS="$APP_DIR/deploy/tls-bootstrap.sh"
+TLS="$DEPLOY_DIR/tls-bootstrap.sh"
 if [ "$CERT_MODE" = import ]; then
     sh "$TLS" import-cert --pki "$PKI_DIR" --cert "$CERT_FILE" --key "$KEY_FILE" \
         ${CHAIN_FILE:+--chain "$CHAIN_FILE"} >>"$INSTALL_LOG" 2>&1 || die "Could not import the certificate (check $INSTALL_LOG)"
