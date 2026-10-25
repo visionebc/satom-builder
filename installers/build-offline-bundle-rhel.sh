@@ -31,7 +31,7 @@ OS_TAG="rhel9-x86_64"
 # python3.11: the system python3 on EL9 is 3.9 and the code requires >= 3.10.
 # [ABI-OFFLINE] The system libraries the interpreter is built against are
 # listed EXPLICITLY, so the installer can repair an old base image offline.
-PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git
+PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git tar gzip
       openssh-clients policycoreutils-python-utils
       expat openssl-libs sqlite-libs zlib)
 

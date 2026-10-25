@@ -204,7 +204,7 @@ check_system() {
     if   [ "${disk_mb:-0}" -ge 5000 ]; then ok "Free disk on /opt: $((disk_mb/1024)) GB"
     elif [ "${disk_mb:-0}" -ge 1500 ]; then warn "Free disk on /opt: ${disk_mb} MB -- 5 GB recommended"
     else die "Free disk on /opt: ${disk_mb:-0} MB -- not enough (1.5 GB minimum)"; fi
-    have tar || die "tar is missing"
+    have tar || install_tar_from_bundle
     if have curl && curl -fsS -o /dev/null --connect-timeout 8 https://pypi.org/simple/ 2>/dev/null; then
         INTERNET=1; ok "Internet access (pypi.org) OK"
     elif ! have curl && have timeout && timeout 8 bash -c ': > /dev/tcp/pypi.org/443' 2>/dev/null; then
@@ -213,6 +213,25 @@ check_system() {
     else
         warn "No Internet access (or no curl yet): only the OFFLINE install is possible"
     fi
+}
+
+# A minimal RHEL/SUSE image may have no tar: the offline bundle carries it.
+# (Found 2026-10-25 installing the RHEL 9 bundle on a minimal Rocky 9: the
+# setup stopped at "tar is missing" with the package sitting in bundle/rpms.)
+# Extract the bundle without tar: python3 -m tarfile -e <bundle>.tar.gz .
+install_tar_from_bundle() {
+    local p=""
+    for p in "$SCRIPT_DIR"/bundle/rpms/tar-[0-9]*.rpm "$SCRIPT_DIR"/bundle/rpms-suse/tar-[0-9]*.rpm \
+             "$SCRIPT_DIR"/bundle/debs/tar_*.deb; do
+        [ -f "$p" ] || continue
+        info "tar is missing: installing it from the offline bundle ($(basename "$p"))"
+        case "$p" in
+            *.rpm) rpm -U --quiet "$p" ;;
+            *.deb) dpkg -i "$p" >/dev/null ;;
+        esac || die "tar is missing and installing $(basename "$p") from the bundle failed"
+        have tar && { ok "tar installed from the bundle"; return 0; }
+    done
+    die "tar is missing: install it with the system package manager, or run this script from an extracted offline bundle (extract it with: python3 -m tarfile -e <bundle>.tar.gz .)"
 }
 
 ENGINE=""; IN_BUNDLE=0; WORK=""

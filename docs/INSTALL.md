@@ -122,6 +122,10 @@ tar xzf satom-builder-offline-0.1.3-debian12-amd64.tar.gz
 cd satom-builder-installer
 sudo bash satom-builder-setup.sh
 ```
+A minimal RHEL or SUSE server may have no `tar`. Extract the bundle with Python instead —
+`python3 -m tarfile -e satom-builder-offline-<version>-<os>.tar.gz .` — and run the setup from
+the extracted folder: it installs `tar` from the bundle before anything else.
+
 
 or let the guided installer verify and extract it:
 
