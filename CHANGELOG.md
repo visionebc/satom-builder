@@ -3,12 +3,19 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.1] - 2026-10-25
+## [0.1.2] - 2026-10-25
 
-Fixes found by the first end-to-end run against a live SATOM.
+Fixes found by the first end-to-end runs against a live SATOM and a local
+model. (0.1.1 was a lab build, never published.)
 
 ### Fixed
 
+- **A view's or widget's AI request carries only what a view can use**
+  (datasets, parameter types, name patterns, limits), as compact JSON. With
+  the whole app schema a view's request was about 27,000 tokens, past a
+  local model's default context, and the model never saw the output
+  contract. The context window a local server needs is documented on the AI
+  profiles page and in the user guide.
 - **The local check runs SATOM's real rules pack.** The pack ran in a child
   interpreter whose import path came from `sysconfig`. Inside a virtual
   environment that path has no `lib-dynload`, so SATOM's own pack stopped at

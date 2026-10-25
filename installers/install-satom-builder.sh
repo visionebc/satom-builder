@@ -38,7 +38,7 @@
 # ============================================================================
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.1.2"
 APP_DIR="/opt/satom-builder"
 ETC_DIR="/etc/satom-builder"
 PKI_DIR="${ETC_DIR}/pki"
