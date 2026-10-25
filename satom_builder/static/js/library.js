@@ -128,7 +128,7 @@
         const items = groups[g].filter((d) => !ff || (d.key + " " + (d.label || "") + " " + (d.columns || []).join(" ")).toLowerCase().includes(ff));
         if (!items.length) return;
         shown += items.length;
-        const det = h("details", { class: "sb-lib-ver", open: g === "Built-in" || g === "Administrator datasets" || (ff && items.length <= 30) || null },
+        const det = h("details", { class: "sb-lib-ver", open: g === "Built-in" || g === "Administrator datasets" || !!ff || null },
           h("summary", null, h("strong", { text: g }), h("span", { class: "sb-help", text: ` · ${items.length}` })));
         items.forEach((d) => {
           const src = SOURCE[d.source] || [d.source || "", "secondary"];

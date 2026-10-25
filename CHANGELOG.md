@@ -21,7 +21,7 @@ Builder must receive these datasets created in SATOM so both are in line".
   it. A dataset published in SATOM appears in the Builder at the next library
   refresh (or **Refresh from SATOM**).
 - **Datasets tab**: grouped (built-in, administrator, one group per product
-  and object family) and searchable; what the plugin reads is listed first.
+  and cache layer) and searchable; what the plugin reads is listed first.
 - **Library page**: the same catalogue, searchable; open a dataset for its
   columns (masked ones marked), its relations and its SQL or query.
 - **Database tab › More of SATOM's data**: find any dataset of the target and

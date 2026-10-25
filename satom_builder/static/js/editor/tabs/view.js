@@ -115,7 +115,7 @@ export const datasets = {
       const items = groups[g].filter(hit);
       if (!items.length) return;
       shown += items.length;
-      const open = g === "Built-in" || g === "Administrator datasets" || (t && items.length <= 40) || items.some((d) => chosen.includes(d.key));
+      const open = g === "Built-in" || g === "Administrator datasets" || !!t || items.some((d) => chosen.includes(d.key));
       const det = h("details", { class: "ed-ds-group", open: open || null }, h("summary", null, g, " ", h("small", { class: "text-muted", text: `(${items.length})` })));
       items.forEach((d) => {
         idx += 1;
