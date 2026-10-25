@@ -29,31 +29,41 @@
     </tbody>
   </table>
   {% else %}<div class="fw-card-body">No AI profile yet. Authors pick one for each generation.</div>{% endif %}
+  {% if rows %}<div class="fw-card-body pt-2"><p class="sb-help mb-0">Every enabled profile is offered to authors at the same time: they pick one for each generation (for example Claude for a large app and a private Qwen for a quick view).</p></div>{% endif %}
 </div>
 
 <div class="fw-card">
   <div class="fw-card-header"><h2 class="fw-card-title">{{ 'Edit ' ~ edit.name if edit else 'Add a profile' }}</h2></div>
   <div class="fw-card-body">
     <p class="sb-help">Two adapters. <strong>Anthropic</strong> uses the official SDK (default model <span class="sb-mono">claude-opus-5-5</span>, streaming, the author guide cached as the fixed system block). <strong>OpenAI-compatible</strong> covers OpenAI, Azure OpenAI, Mistral, Gemini's compatible endpoint, Ollama, vLLM and LM Studio: give the base URL that ends before <span class="sb-mono">/chat/completions</span> (for example <span class="sb-mono">https://api.openai.com/v1</span> or <span class="sb-mono">http://127.0.0.1:11434/v1</span>); local servers need no key. Keys are encrypted at rest and never shown again.</p>
+    <p class="sb-help"><strong>Private models.</strong> A model your company runs itself (Qwen, DeepSeek, Llama, Mistral…) is an <strong>OpenAI-compatible</strong> profile pointing at your server: Ollama, vLLM or LM Studio. Prompts and answers then never leave your network. Pick it under <em>Start from</em>. Reasoning models (DeepSeek-R1, Qwen3, QwQ) write their thinking before the answer: Builder drops it, but it counts against <em>Max tokens</em>, so give them 32,768 or more.</p>
     <p class="sb-help"><strong>Context window.</strong> A request carries SATOM's author guide (about 5,000 tokens) plus the target's schema: about 7,000 tokens for a view and up to 30,000 for an app. Hosted models have room. A local server truncates silently at its own default (Ollama: 2,048–4,096 tokens), and the model then never sees the output contract. Start Ollama with <span class="sb-mono">OLLAMA_CONTEXT_LENGTH=32768</span> or more, or the equivalent setting of your server.</p>
     <form method="post" action="{{ url_for('admin.ai_save') }}" class="row g-3" style="max-width: 900px" autocomplete="off">
       {{ m.csrf() }}
-      {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+      {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% else %}
+      <div class="col-md-8"><label class="form-label" for="a-preset">Start from</label>
+        <select class="form-select" id="a-preset">
+          <option value="">— choose a kind of AI to fill the fields —</option>
+          {% for p in presets %}<option value="{{ p.id }}" data-adapter="{{ p.adapter }}" data-url="{{ p.url }}" data-model="{{ p.model }}" data-max="{{ p.max_tokens }}" data-name="{{ p.name }}">{{ p.label }}</option>{% endfor %}
+        </select>
+        <div class="sb-help mt-1">Fills the fields below; then replace <span class="sb-mono">your-ai-server</span> with your server's name or address and press Save, then Test.</div></div>
+      <div class="col-md-4"></div>{% endif %}
       <div class="col-md-4"><label class="form-label" for="a-name">Name</label><input class="form-control" id="a-name" name="name" value="{{ edit.name if edit else '' }}" maxlength="80" required></div>
       <div class="col-md-4"><label class="form-label" for="a-adapter">Adapter</label>
         <select class="form-select" id="a-adapter" name="adapter">
           <option value="anthropic" {{ 'selected' if edit and edit.adapter == 'anthropic' }}>Anthropic</option>
           <option value="openai_compatible" {{ 'selected' if edit and edit.adapter == 'openai_compatible' }}>OpenAI-compatible</option>
         </select></div>
-      <div class="col-md-4"><label class="form-label" for="a-model">Model</label><input class="form-control sb-mono" id="a-model" name="model" value="{{ edit.model if edit else 'claude-opus-5-5' }}" maxlength="120"></div>
+      <div class="col-md-4"><label class="form-label" for="a-model">Model</label><input class="form-control sb-mono" id="a-model" name="model" value="{{ edit.model if edit else 'claude-opus-5-5' }}" maxlength="120" list="a-models">
+        <datalist id="a-models">{% for mdl in model_hints %}<option value="{{ mdl }}">{% endfor %}</datalist></div>
       <div class="col-md-8"><label class="form-label" for="a-url">Base URL</label><input class="form-control sb-mono" id="a-url" name="base_url" value="{{ edit.base_url if edit else '' }}" placeholder="empty = https://api.anthropic.com (Anthropic)"></div>
       <div class="col-md-4"><label class="form-label" for="a-max">Max tokens</label><input class="form-control" id="a-max" name="max_tokens" type="number" min="256" max="128000" value="{{ edit.max_tokens if edit else 64000 }}"></div>
       <div class="col-md-8"><label class="form-label" for="a-key">API key — {{ m.secret_state(edit.key_set if edit else False) }}</label>
         <input class="form-control" type="password" id="a-key" name="key" placeholder="{{ 'leave empty to keep' if edit and edit.key_set else '' }}" autocomplete="new-password">
         {% if edit and edit.key_set %}<div class="form-check"><input class="form-check-input" type="checkbox" id="a-ck" name="clear_key"><label class="form-check-label sb-help" for="a-ck">remove the key</label></div>{% endif %}</div>
-      <div class="col-md-4"><label class="form-label" for="a-effort">Effort (Anthropic)</label>
+      <div class="col-md-4 sb-anthropic-only"><label class="form-label" for="a-effort">Effort (Anthropic)</label>
         <select class="form-select" id="a-effort" name="effort">{% for e in efforts %}<option value="{{ e }}" {{ 'selected' if (edit.effort if edit else 'high') == e }}>{{ e }}</option>{% endfor %}</select></div>
-      <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="a-fb" name="fallbacks" {{ 'checked' if (not edit or edit.fallbacks) }}>
+      <div class="col-12 form-check ms-2 sb-anthropic-only"><input class="form-check-input" type="checkbox" id="a-fb" name="fallbacks" {{ 'checked' if (not edit or edit.fallbacks) }}>
         <label class="form-check-label" for="a-fb">Refusal fallbacks (Anthropic, first-party API only): when the model declines, Anthropic re-runs the request on its recommended fallback model.</label></div>
       <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="a-en" name="enabled" {{ 'checked' if (not edit or edit.enabled) }}>
         <label class="form-check-label" for="a-en">Enabled (authors can pick it)</label></div>
@@ -63,3 +73,4 @@
   </div>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/ai-profiles.js') }}?v={{ app_version }}"></script>{% endblock %}

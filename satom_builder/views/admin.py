@@ -261,7 +261,8 @@ def ai_page():
     for r in rows + ([edit] if edit else []):
         r["fallbacks_effective"] = (r["adapter"] == "anthropic" and r["fallbacks"]
                                     and is_first_party(r["base_url"]))
-    return render_template("admin/ai.html", rows=rows, edit=edit, efforts=EFFORTS)
+    return render_template("admin/ai.html", rows=rows, edit=edit, efforts=EFFORTS,
+                           presets=profiles.PRESETS, model_hints=profiles.MODEL_HINTS)
 
 
 @bp.post("/ai")

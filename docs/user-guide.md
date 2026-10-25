@@ -130,7 +130,23 @@ Deleting a target removes everyone's token for it; its projects keep their draft
 
 ### AI profiles
 
-Authors pick a profile for each generation. Fields:
+Keep as many profiles as you need, enabled at the same time (for example Claude and a private Qwen
+or DeepSeek): every enabled profile is offered to authors, who pick one for each generation.
+
+**Start from** (new profiles) fills the form for Anthropic, a private server (Ollama, vLLM or LM
+Studio) or another OpenAI-compatible service. A private server's URL comes with `your-ai-server` in
+it: replace it with your server's name or address (a profile that still names `your-ai-server` is
+refused), save, then press **Test**. The *Model* field suggests common models (`qwen3:32b`,
+`deepseek-r1:32b`, `Qwen/Qwen3-32B`, …); any name your server knows is accepted.
+
+**Private models.** A model your company runs itself (Qwen, DeepSeek, Llama, Mistral…) is an
+*OpenAI-compatible* profile pointing at your own server, so prompts and answers never leave your
+network. Reasoning models (DeepSeek-R1, Qwen3, QwQ) think before they answer. Builder drops a
+`<think>…</think>` block when the server leaves it in the answer, and reads the answer alone when the
+server sends the thinking in its own field (Ollama does). The thinking still counts against
+*Max tokens*: give these models 32,768 or more.
+
+Fields:
 
 | Field | Notes |
 |---|---|
@@ -139,7 +155,7 @@ Authors pick a profile for each generation. Fields:
 | Model | The provider's model name. |
 | API key | Encrypted, write-only: leave empty to keep the stored key, tick *remove the key* to delete it. Local servers (Ollama, vLLM) need none. |
 | Max tokens | The longest answer allowed (256 to 128000; default 64000). A draft cut off at this limit is reported as "output too long, raise max tokens". |
-| Effort | Anthropic only: `low` to `max`; default `high`. |
+| Effort | Anthropic only (hidden for other adapters): `low` to `max`; default `high`. |
 | Refusal fallbacks | Anthropic only, and only on Anthropic's own API: a declined request is retried on Anthropic's recommended fallback model. On by default; the list shows *n/a here* for other base URLs. |
 | Enabled | Disabled profiles are hidden from authors. |
 
@@ -196,5 +212,7 @@ What you may do *in SATOM* is decided by SATOM, from your token.
 | "The rules pack is for SATOM A but the target runs B" / "does not match its digest" | The pack is refused on purpose. Refresh the target (*My tokens › Test*) and retry; if it persists, SATOM is serving a pack that does not match its version. |
 | "The rules pack did not answer within 30 s" | The check was stopped. Retry; if it persists, report it with the project. |
 | "The output was too long: raise max tokens" | Raise *Max tokens* in the AI profile. |
+| "The model spent all of max tokens reasoning" / "returned only its reasoning" | A reasoning model (DeepSeek-R1, Qwen3) thought until the limit: raise *Max tokens* in the AI profile. |
+| "Replace your-ai-server in the base URL" | The profile came from *Start from*: put your AI server's name or address in the base URL. |
 | "The model declined the request (refusal category: …)" | Rephrase the request. |
 | "Connection … carries a secret" | Remove the value: SATOM asks for it on import. |

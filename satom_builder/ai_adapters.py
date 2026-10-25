@@ -19,6 +19,7 @@ redacted.
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlsplit
 
 import httpx
@@ -226,16 +227,53 @@ class OpenAICompatibleAdapter:
             raise AIError("The AI provider's answer has no choices[0].message.content.",
                           "ai_bad_answer") from None
         if choice.get("finish_reason") == "length":
+            msg = choice.get("message") or {}
+            if not (text or "").strip() and any(msg.get(k) for k in ("reasoning", "reasoning_content")):
+                # Ollama, vLLM with a reasoning parser, DeepSeek's API: the
+                # thinking comes in its own field and used the whole budget
+                raise AIError("The model spent all of max tokens reasoning and wrote no answer: "
+                              "raise max tokens in the AI profile.", "ai_max_tokens")
             raise AIError("The output was too long: raise max tokens in the AI profile.",
                           "ai_max_tokens")
         if isinstance(text, list):   # some servers return content parts
             text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
         if not isinstance(text, str) or not text.strip():
             raise AIError("The model returned no text.", "ai_empty")
-        return text
+        answer, _ = strip_reasoning(text)
+        if not answer.strip():
+            raise AIError("The model returned only its reasoning, no answer: raise max tokens "
+                          "in the AI profile (reasoning models such as DeepSeek-R1 or Qwen3 "
+                          "spend part of it thinking).", "ai_empty")
+        return answer
 
     def _clean(self, exc) -> str:
         return redact(str(exc), extra=[self.key])[:800]
+
+
+_THINK_OPEN = re.compile(r"^\s*<think\s*>", re.I)
+_THINK_CLOSE = re.compile(r"</think\s*>", re.I)
+
+
+def strip_reasoning(text: str) -> tuple[str, bool]:
+    """Drop the reasoning a self-hosted reasoning model (DeepSeek-R1, Qwen3,
+    QwQ) writes before its answer when the server has no reasoning parser.
+
+    ``<think>...</think>answer`` -> ``answer``; an unterminated ``<think>...``
+    (the budget ran out while thinking) -> ``""``. DeepSeek-R1's chat template
+    opens ``<think>`` inside the prompt, so its answer is ``...</think>answer``:
+    that form is cut only when the text does not already start as an answer
+    (``{`` or a code fence), so a JSON answer that mentions ``</think>`` as
+    data is left alone. Returns (answer, whether reasoning was removed)."""
+    m = _THINK_OPEN.match(text)
+    if m:
+        close = _THINK_CLOSE.search(text, m.end())
+        return (text[close.end():] if close else ""), True
+    head = text.lstrip()
+    if not head.startswith(("{", "```")):
+        close = _THINK_CLOSE.search(text)
+        if close:
+            return text[close.end():], True
+    return text, False
 
 
 def make_adapter(profile: dict, *, anthropic_factory=None, transport=None,

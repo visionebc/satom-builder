@@ -15,6 +15,31 @@ class ProfileError(ValueError):
     pass
 
 
+# "Start from" on the AI profiles page: fills the form, saves nothing. A
+# private server's URL carries PLACEHOLDER_HOST, which clean_form refuses, so
+# a preset is never saved pointing nowhere.
+PLACEHOLDER_HOST = "your-ai-server"
+PRESETS = (
+    {"id": "anthropic", "label": "Anthropic (Claude)", "name": "Claude",
+     "adapter": "anthropic", "url": "", "model": DEFAULT_MODEL, "max_tokens": DEFAULT_MAX_TOKENS},
+    {"id": "ollama", "label": "Private server: Ollama (Qwen, DeepSeek, Llama, Mistral…)",
+     "name": "Private Qwen (Ollama)", "adapter": "openai_compatible",
+     "url": f"http://{PLACEHOLDER_HOST}:11434/v1", "model": "qwen3:32b", "max_tokens": 32768},
+    {"id": "vllm", "label": "Private server: vLLM", "name": "Private Qwen (vLLM)",
+     "adapter": "openai_compatible", "url": f"http://{PLACEHOLDER_HOST}:8000/v1",
+     "model": "Qwen/Qwen3-32B", "max_tokens": 32768},
+    {"id": "lmstudio", "label": "Private server: LM Studio", "name": "Private model (LM Studio)",
+     "adapter": "openai_compatible", "url": f"http://{PLACEHOLDER_HOST}:1234/v1",
+     "model": "", "max_tokens": 32768},
+    {"id": "other", "label": "Other OpenAI-compatible service (OpenAI, Azure OpenAI, Mistral…)",
+     "name": "", "adapter": "openai_compatible", "url": "", "model": "", "max_tokens": DEFAULT_MAX_TOKENS},
+)
+# suggestions only (a <datalist>): any model the server knows is accepted
+MODEL_HINTS = ("claude-opus-5-5", "qwen3:32b", "qwen3:14b", "qwen3:8b", "deepseek-r1:70b",
+               "deepseek-r1:32b", "deepseek-r1:14b", "qwen2.5-coder:32b", "llama3.3:70b",
+               "mistral-small3.2:24b", "Qwen/Qwen3-32B", "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+
+
 def list_profiles(conn, enabled_only: bool = False):
     q = "SELECT * FROM ai_profiles"
     if enabled_only:
@@ -59,6 +84,9 @@ def clean_form(form, existing=None) -> dict:
             raise ProfileError("The base URL must be an http(s) URL.")
         if parts.username or parts.password:
             raise ProfileError("The base URL must not carry credentials.")
+        if (parts.hostname or "").lower() == PLACEHOLDER_HOST:
+            raise ProfileError(f"Replace {PLACEHOLDER_HOST} in the base URL with the name or "
+                               "address of your AI server.")
     if adapter == "openai_compatible" and not base_url:
         raise ProfileError("An OpenAI-compatible profile needs a base URL.")
     model = (form.get("model") or "").strip() or (DEFAULT_MODEL if adapter == "anthropic" else "")

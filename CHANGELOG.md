@@ -3,6 +3,30 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- **Private AI models, several at once.** *AI profiles* has a **Start from**
+  list: Anthropic, a private server (Ollama, vLLM, LM Studio: Qwen, DeepSeek,
+  Llama, Mistral…) or another OpenAI-compatible service. It fills the adapter,
+  base URL, model and max tokens; the model field suggests common models. A
+  profile still naming the placeholder `your-ai-server` is refused. The page
+  says that every enabled profile is offered to authors at the same time, and
+  hides the Anthropic-only fields (effort, refusal fallbacks) for other
+  adapters.
+
+### Fixed
+
+- **A reasoning model's thinking no longer breaks a generation.** When a server
+  leaves DeepSeek-R1's or Qwen3's `<think>…</think>` block in the answer (vLLM
+  without a reasoning parser, llama.cpp), the JSON was read from the first `{`
+  of the reasoning and failed as "not valid JSON". The block is dropped first,
+  also in DeepSeek-R1's form that carries only the closing tag.
+- **"Spent all of max tokens reasoning"** replaces "the output was too long"
+  when the answer is empty and the thinking came in its own field (Ollama),
+  and an answer that is only reasoning says to raise max tokens.
+
 ## [0.1.5] - 2026-10-25
 
 The console on a phone (measured at 360, 390 and 430 px in a real browser),
