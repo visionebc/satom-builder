@@ -158,6 +158,11 @@ VIEW_JINJA_NOTES = [
     "per item with parent_id = the parent row's id and the item in `name`. Join it: "
     "{% for a in fortigate_firewall_policy__srcaddr.rows if a.parent_id == p.id %}. "
     "Declare every dataset the body reads.",
+    "Objects name each other by NAME, never by id: a srcaddr/dstaddr row's `name` is the "
+    "address row's `name` (and its `mkey`) on the same device (same appliance_id); `id` is "
+    "SATOM's internal row id, used only by parent_id. Join: "
+    "{% for addr in fortigate_firewall_address.rows if addr.name == a.name and "
+    "addr.appliance_id == a.appliance_id %}.",
     "Address objects (fortigate_firewall_address) hold `subnet` as 'IP MASK' "
     "('192.0.2.5 255.255.255.255'); compare with (a.subnet or '').split(' ')[0].",
     "A {% set %} inside a {% for %} does NOT change the variable outside that loop (Jinja "
