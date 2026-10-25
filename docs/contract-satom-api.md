@@ -264,3 +264,86 @@ The editor front-end (templates and JS) talks to the backend only through these 
 | `GET /api/jobs/<job_id>` | → `{"status":"running|done|failed","rounds":[{"n","ok","problems":[...],"at"}],"error":"","project":{...}|null}` |
 
 The base layout is `satom_builder/templates/base.html`, owned by the core, with the blocks `title`, `head`, `content` and `scripts`. Editor pages extend it.
+
+## 12. Amendments (2026-10-25, as built and verified against SATOM 4.0.3 + stage 0)
+
+These amend the sections above. Where they conflict, this section wins.
+
+**§1 Errors and publishers**
+- Error codes:
+
+  | Code | HTTP | Meaning |
+  |---|---|---|
+  | `bad_request` | 400 | |
+  | `invalid_key` | 400 | the publisher key is invalid |
+  | `insufficient_scope` / `owner_forbidden` / `wrong_product` | 403 | |
+  | `busy` | 409 | too many rehearsals at once |
+  | `too_large` | 413 | |
+  | `package_refused` | 422 | comes with `problems` |
+
+- `POST /publishers` answers `{"key_id", "created": bool}`.
+- `GET /publishers` answers a bare array.
+- "Super-admin" means the owner holds `studio.plugin_studio`.
+
+**§2 Target snapshot**
+- Each entry in `publishers` is `{"key_id", "label", "public_key": <base64 raw 32 bytes>}`. Only the enabled publishers that apply to the token's ADOM are listed.
+
+**§3.1 Rules pack**
+- `rules.json` also carries:
+  - `"stubs": [modules]`: SATOM modules that need Flask, the database or a library the pack doesn't carry. They are packed as STUBs, never dropped.
+  - `"requires": ["jinja2", "markupsafe", "cryptography"]`.
+- `satom_rules/app/__init__.py` holds only a docstring.
+- The pack is pinned by the zip's sha256 (the `X-Satom-Rules-Sha256` header) and by the hash of every member. There is no separate signature: SATOM re-checks every validate, rehearse and import call, so it stays authoritative.
+- **The Builder child process** runs with `sys.path` = the pack directory + the interpreter's own stdlib path (`lib-dynload` included) + site-packages. Nothing else: no cwd, no user site, no Builder source.
+
+**§3.2 `check()` and `schema()`**
+- Every item in `problems` and `warnings` also carries `"rule": "<id>"`, using the ids from `package_check.RULES`.
+- `schema()` also carries:
+  - `methods` and `param_in` (API Catalog);
+  - `reserved_vars`;
+  - `patterns`: the regexes of the modules that enforce them, for `slug`, `version`, `icon`, `field`, `action_key`, `app_slug`, `store_slug`, `column`, `connection_slug`, `step_key`, `variable` and `operation_id`.
+- `datasets` is a list of strings.
+- `script.field_types` excludes the database field types.
+- The `where` values that `check()` uses, and the editor understands:
+  - `manifest[.key]`
+  - `files[<file>][:<line>]` and `style.css:<line>`
+  - `datasets`, `params[<name>]`
+  - `app.fields[<name>]`, `app.graph`, `app.graph.nodes[<key>]`, `app.graph.edges[<i>]`, `app.actions[<key>]`, `app.design[.page|.result|.theme][<id>]`
+  - `stores[<slug>][.columns[<name>]|.rows[<i>]]`
+  - `connections[<slug>]`
+  - `apis[<slug>@<version>][.operations[<id>]]`
+  - `scripts[<slug>][.files[<file>]][:<line>]`
+
+**§5 Rehearse**
+- Write steps **and script steps** are recorded, not executed.
+- When an object is missing, or the package is a `code` package, the answer is `ok: false, status: "failed", steps: []` and nothing is walked.
+
+**§6 Policy rules**
+- **For all policies:**
+  - the template rule covers the ids of apps, stores, connections and scripts;
+  - code must be signed by Vision EBC;
+  - every structural failure that install would hit is refused before any write: app, fields, actions, design and graph shape; store slug, columns and rows; connection definition; API definition; image type and size;
+  - a connection pinned to an API version that is a draft on the server is refused.
+- **Builder policy only** (under `import` they are warnings):
+  - a `body.jinja` that does not parse;
+  - more than 500 seed rows.
+- **Response:** the import answer also carries `warnings`, `signed_by`, `signer` and `policy`.
+
+**§7 Scripts in packages**
+- Database field types (`lookup`, `lookup_multi`, `dataset`) are refused.
+- The entry is `main.py`.
+- `write=` with any value other than the literal `False` is refused.
+- `getattr(..., "secret"|"tcp")` and `from satom_script|satom_sdk import *` are refused.
+- Export carries `settings.network` and `settings.credentials` (names only) when they are set, so the import refuses them by name.
+- An audience other than `admins` is a warning; install forces `admins`.
+
+**§8 Publishers**
+- A publisher may be limited to some ADOMs (`adom_keys`). Outside those ADOMs its signature is not trusted.
+
+**§11 Internal API, additions**
+- `GET /api/ai/profiles` → `[{"id", "name", "adapter": "anthropic"|"openai_compatible", "model"}]`. Only enabled profiles are listed, and never a key.
+- `GET /api/jobs/<id>` also returns `"id"` and `"ok"`.
+- `PUT /api/projects/<id>` adds `"local_check_note"` when `local_check` is null.
+- `POST …/generate` answers `202`.
+- `GET` and `DELETE /api/projects/<id>/assets/<sha>`.
+- A draft connection that carries a secret value is refused with `400 secret_in_draft`.
