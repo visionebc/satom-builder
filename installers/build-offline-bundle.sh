@@ -37,7 +37,7 @@ OS_TAG="debian12-amd64"
 # sudo: the privilege model writes /etc/sudoers.d and validates it with visudo.
 # openssh-client: ssh-keygen verifies release-trust signatures.
 PKGS=(python3 python3-venv python3-pip nginx openssl curl ca-certificates
-      sudo git openssh-client)
+      sudo git openssh-client bubblewrap)
 # Alternative providers the recursive resolver drags in through `a | b`
 # dependencies. The target already runs one provider (the image's systemd);
 # shipping the other and forcing it breaks the base system. The installer

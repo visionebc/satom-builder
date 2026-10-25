@@ -348,3 +348,53 @@ These amend the sections above. Where they conflict, this section wins.
 - `GET` and `DELETE /api/projects/<id>/assets/<sha>`.
 - A draft connection that carries a secret value is refused with `400 secret_in_draft`.
 - `last_check` is stored and returned as `{"source": "local"|"remote", "at": <epoch>, "result": <check() result>}`, or `null`. A fresh `check()` answer is the bare result.
+
+## 13. The test runtime in the rules pack (2026-10-25, SATOM 4.2.0, Builder 0.2.0)
+
+The rules pack also carries the code the Builder TESTS a package with, on its own test data, before the package reaches any server. Nothing of it is re-implemented in the Builder.
+
+- **SATOM side** (`app/services/rules_pack.py`): `RUNTIME_MODULES` join `package_check` as roots of the closure, packed exactly like the rules (verbatim, or a stub when a module needs the server). They are `plugin_frame`, `plugin_sandbox`, `studio_flow`, `studio_apps`, `studio_store`, `studio_connections`, `studio_apis`, `studio_api_spec`, `studio_checks`, `studio_satom`, `script_library`, `sandbox`, `sandbox_boot`, `script_sdk`, `integration_sdk`, `studio_broker`, `studio_http` and `script_runner`.
+- `rules.json` gains `"runtime": {"format": "satom.runtime/1", "modules": {"app.services.<m>": "packed"|"stub"}, "kit_css": "satom_rules/runtime/plugin-kit.css", "tokens_css": "satom_rules/runtime/tokens.css"}`. Both data files are hashed in `files` like every member. `plugin-kit.css` is `static/css/plugin-kit.css` byte for byte; `tokens.css` is `plugin_frame.default_tokens_css()`.
+- New pure functions the runtime uses: `plugin_frame.frame_document(plugin, body_html, data, params, tokens=, kit=)` (the console page, the editor preview and the rehearsal use it too), `plugin_frame.kit_css_from(text)`, `plugin_sandbox.dataset_columns(key)` (the columns a dataset's rows carry, read from its fixed SQL) and `plugin_sandbox.param_args(inputs)` (params by name → the `p_<name>` arguments `resolve_params` reads).
+- **Builder side** (`satom_builder/runtime.py`, `runtime_child.py`): a pack is usable for test runs only when `runtime.format` is `satom.runtime/1` and every module above is `packed`; otherwise the Builder says the target needs SATOM 4.2.0. The child runs like the rules (`python -I -B`, `sys.path` = the pack + stdlib + site-packages, no Builder secret in its environment) and, before anything else, makes every AF_INET/AF_INET6 connect and name lookup fail. It replaces ONLY the data layer: `studio_store` get/query/insert/update/delete_row (rows in memory; SATOM's `clean_row`, `_match`, `upsert` and `delete_where` run on top), `studio_http.http_request`/`pg_request` (canned answers), `studio_connections.get`/`secret_state`/`definition`/`for_runner`, `studio_apis.catalog_of`, `studio_checks.run` and `studio_satom.run` for the steps that would touch SATOM or a device (except `ask`, `activity` and `render_names`, which run verbatim), `studio_satom.source_options`, and `studio_apps.choices`/`script_disabled`. Scripts are laid out as a Script Library under a temporary `FM_APP_DIR` and run by SATOM's `script_runner` in SATOM's jail (`sandbox.execute`, bubblewrap), with SATOM's broker answering `connection()`.
+- A diagram walks with `Ctx(armed=True, scripts=True)`: every effect lands on test data.
+
+## 14. The library (2026-10-25, SATOM 4.2.0, Builder 0.2.0)
+
+`GET /api/v1/builder/library` (scope `read`, the owner's ADOM like every call): structure only, never a row or a secret.
+
+```json
+{"format": "satom.builder-library/1", "product": "<adom>",
+ "datasets": [{"key", "label", "description", "columns": [...]}],
+ "stores": {"<slug>": {"name", "description", "columns": [{"name", "label", "type", "required", ...}]}},
+ "apis": [{"slug", "name", "owner", "docs_url", "description",
+           "versions": [{"version", "status", "base_path", "notes", "operations": [...]}]}],
+ "fortinet": {"products": {"<product>": [{"version", "build", "line", "measured", "vendor_only", "cli_measured", "in_fleet"}]}}}
+```
+
+`fortinet` covers the token's ADOM product, or every product of the API library for `global`.
+
+`GET /api/v1/builder/library/fortinet/<product>/<version>` → `{"product", "version", "endpoints": [{"endpoint", "urn", "section", "verdict", "fields_known", "sources", "vendor_only"}]}`; with `?endpoint=<name>` → `{"product", "version", "endpoint", "status": "measured"|"blind"|"absent"|"unmeasured", "fields": {...}}`. A product outside the token's ADOM is `403 wrong_product`; a malformed version or endpoint `400 bad_request`. A SATOM without the route answers 404, which the Builder reports as "needs SATOM 4.2.0".
+
+**§5 Rehearse, amendment:** the `inputs` of a view rehearsal are its params by name; SATOM maps them with `plugin_sandbox.param_args` (before 4.2.0 they were ignored and the view rendered with its defaults).
+
+**§11 Internal API, additions (Builder 0.2.0)**
+
+| Route | Body → Answer |
+|---|---|
+| `GET /api/projects/<id>/testdata` | → `{"data", "updated_at", "datasets": [{key, label, description, columns}], "stores": {slug: {columns, from}}, "connections": {slug: {kind, from, base_url}}, "steps": [{key, kind, label}], "sources", "runtime": {"ok", "message", "satom_version", "jail", "jail_message"}}` |
+| `PUT /api/projects/<id>/testdata` | `{"data"}` → `{"data", "updated_at"}`; `400 bad_testdata` names the place |
+| `POST /api/projects/<id>/testdata/generate` | `{"seed", "rows", "only": ["datasets:x", "stores:y", "connections:z"]}` → the GET shape, saved |
+| `POST /api/projects/<id>/test-runs` | `{"kind": "view"|"app"|"script", "script", "inputs", "answers"}` → `202 {"run_id"}`; `409 no_runtime` / `409 no_jail` |
+| `GET /api/projects/<id>/test-runs` | → `{"runs": [...]}` (last 50, no answers) |
+| `GET /api/test-runs/<run_id>` | → `{id, kind, subject, status, summary, inputs, created_at, finished_at, result}` |
+| `POST /api/test-runs/<run_id>/keep` | → the run's store writes become the test data |
+| `GET /api/targets/<id>/library` | → §14 (cached per author; `?refresh=1`) |
+| `GET /api/targets/<id>/library/fortinet/<product>/<version>` | → §14 (`?endpoint=`) |
+| `GET /api/targets/<id>/guide` | → `{"guide", "sdk_doc", "schema", "satom_version"}` |
+| `GET/POST /api/projects/<id>/chats`, `GET/PUT/DELETE /api/chats/<cid>` | conversations |
+| `POST /api/chats/<cid>/files`, `GET /api/chats/<cid>/files/<fid>` | files (images by their bytes, UTF-8 text files) |
+| `POST /api/chats/<cid>/messages` | `{"text", "files", "profile_id", "max_rounds"}` → `202 {"user", "reply"}` |
+| `GET /api/chats/<cid>/messages/<mid>[/draft]`, `POST …/apply` | a reply, its draft, apply it to the project |
+
+The AI answer of a conversation may carry `"message"` (a note to the author) and may be `{"message": ...}` alone (no change).

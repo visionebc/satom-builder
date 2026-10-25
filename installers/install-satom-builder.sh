@@ -241,10 +241,13 @@ done
 # entry is the Python the family needs: RHEL 9's python3 is 3.9, so python3.11;
 # SUSE 15's is 3.6, so python311. python3 is never assumed.
 case "$PKG_MGR" in
-    apt)        REQUIRED_PKGS=(python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git) ;;
-    dnf|yum)    REQUIRED_PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git) ;;
-    zypper)     REQUIRED_PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git) ;;
+    apt)        REQUIRED_PKGS=(python3 python3-venv python3-pip nginx openssl curl ca-certificates sudo git bubblewrap) ;;
+    dnf|yum)    REQUIRED_PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git bubblewrap) ;;
+    zypper)     REQUIRED_PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git bubblewrap) ;;
 esac
+# bubblewrap: test runs execute an author's script in SATOM's own jail
+# (bwrap --unshare-all: no network, no Builder file). Without it a script
+# test run is refused; views and diagrams still run.
 # Best effort: ssh-keygen verifies release-trust signatures, an OPT-IN check.
 # Every bundle ships it, but its closure can conflict with what a target image
 # already pins (openSUSE: patterns-base-fips vs the bundle's openssh-clients,
@@ -1413,6 +1416,15 @@ for _i in $(seq 1 45); do
 done
 [ "$HEALTH" = ok ] || die "The console does not answer https://${FIRST_NAME}:${WEB_PORT}/healthz within 45 s -- check: journalctl -u satom-builder -n 50"
 ok "healthz 200 through nginx -- installation COMPLETE"
+# The jail of a script test run: bwrap must create its namespaces AS the
+# service account (an unprivileged container without nesting, or user
+# namespaces switched off, cannot). A warning: everything else works.
+if runuser -u "$APP_USER" -- bwrap --unshare-all --die-with-parent --ro-bind / / /bin/true \
+        >>"$INSTALL_LOG" 2>&1; then
+    ok "The script jail works (bubblewrap as ${APP_USER}): scripts can be test-run"
+else
+    warn "bubblewrap cannot create its namespaces as ${APP_USER} here (user namespaces off, or a container without nesting): script test runs will be refused. Views and diagrams still run. See ${INSTALL_LOG}."
+fi
 if runuser -u "$APP_USER" -- sudo -n "$NGINX_BIN" -t >/dev/null 2>&1; then
     ok "sudoers: ${APP_USER} runs 'nginx -t' without a password"
 else

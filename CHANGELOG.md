@@ -3,6 +3,82 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] - 2026-10-25
+
+Everything a plugin author needs to build AND test, with SATOM's own code, on
+test data, before anything reaches a SATOM: test data, test runs, the
+library of what plugins build on, and an assistant conversation that keeps
+its history and files. **Needs SATOM 4.2.0 or later on the target** for test
+runs and the Library (an older SATOM keeps working for everything else and
+the pages say what they need).
+
+Requested: "the chat must take files and images, and keep its history and
+state without being lost when closed; a database with mock data so the user
+can test; the API in its structure and format so the user sees the library;
+scripts run in the sandbox with SATOM's rules; scripts test-run with the mock
+data; then send it to the test SATOM, and users bring it into production."
+
+### Added
+
+- **Test data** (editor tab): what SATOM's runtime reads instead of a
+  database. Datasets carry exactly the columns SATOM gives a view (read from
+  SATOM's own dataset queries, through the rules pack); data stores start
+  from the package's seed rows; connections answer canned responses
+  (method + path patterns, status, JSON body; SQL answers for PostgreSQL);
+  the steps that would touch a device, the DDI, the Certificate Manager or
+  SATOM's fleet answer what the author sets (ok / yes / no / error, a value,
+  a detail). Generated values are synthetic and deterministic per seed (lab
+  names, documentation addresses 192.0.2.0/24, 198.51.100.0/24,
+  203.0.113.0/24, example.com): never a value of a real installation. Edit in
+  a table, as JSON, or from a CSV file.
+- **Test run** (editor tab): the saved project run by SATOM's own runtime,
+  copied verbatim from the target's rules pack (contract section 13), here on
+  the Builder, with no network and nothing sent to SATOM:
+  - a view or widget renders in SATOM's frame (tokens, class kit) with the
+    test data and the chosen params;
+  - an app's diagram walks ARMED, because everything it touches is test data:
+    store writes change a copy you may keep ("Keep these changes"), an API
+    call gets the canned response, SATOM and device steps answer the Test
+    data, "Ask a person" is answered yes / no / stop;
+  - a script runs in SATOM's jail (bubblewrap: no network, no Builder file)
+    with SATOM's SDK, `connection()` answered by the test data through SATOM's
+    own connection broker, inputs typed the way SATOM types them.
+  Every run is kept (the last 50 per project, with the inputs, passwords
+  masked, and the full answer) and goes on if the page is closed.
+- **Library** (sidebar): what a plugin builds on, read from the target with
+  your token: the datasets and their columns, the data stores and their
+  columns, the API Catalog with every version's endpoints, the Fortinet API
+  library (builds, then a build's endpoints, then an endpoint's fields), the
+  step kinds of a diagram, the script SDK and the author guide. Structure
+  only: no row, no secret. Cached per author like the target snapshot.
+- **Assistant** (editor tab): conversations about the project with an AI
+  profile, kept on the Builder with their files. Attach images (PNG, JPEG,
+  GIF, WebP: they reach the model as images, so use a model that reads them)
+  and text files (code, JSON, CSV, YAML, logs: they go into the prompt). A
+  reply is written on the server: close the page and it is there when you
+  come back; a reply cut by a restart says so. The model may answer a
+  question without changing anything, or propose a draft, which is checked by
+  the rules pack and repaired like Generate; the draft reaches the project
+  only with "Apply to the project" (a normal save: the previous draft stays as
+  a revision).
+- **Brand:** SATOM's emblem with the Builder's badge, in the top bar, on the
+  sign-in page and as the favicon.
+- The installer installs `bubblewrap` (all three families, also in the
+  offline bundles) and checks that the jail works as the service account.
+
+### Fixed
+
+- **A draft made with AI (Generate) was lost on the next reload.** The editor
+  marked it as saved although the job never saves (the author applies it). It
+  is now an unsaved change, kept in the local draft until Save.
+
+### Upgrading
+
+- Script test runs need `bubblewrap` on the Builder server. A new install or
+  a re-run of the installer installs it; after an update package, install the
+  `bubblewrap` package with the system's package manager. Until then the Test
+  run tab says so and runs views and diagrams without script steps.
+
 ## [0.1.6] - 2026-10-25
 
 Private AI models, and an installer RE-RUN that no longer trusts what the

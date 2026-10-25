@@ -43,7 +43,7 @@ OS_TAG="suse15-x86_64"
 # Must contain the installer's REQUIRED_PKGS for zypper (tests/test_bundles_offline.py).
 # [ABI-OFFLINE] The system libraries the interpreter is built against are
 # listed EXPLICITLY, so the installer can repair an old base image offline.
-PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git openssh tar gzip
+PKGS=(python311 python311-pip nginx openssl curl ca-certificates sudo git openssh tar gzip bubblewrap
       libexpat1 libopenssl3 libsqlite3-0 libz1)
 
 echo "==> SATOM Builder offline bundle v${VERSION} -- SUSE family (${OS_TAG})"

@@ -32,7 +32,7 @@ OS_TAG="rhel9-x86_64"
 # [ABI-OFFLINE] The system libraries the interpreter is built against are
 # listed EXPLICITLY, so the installer can repair an old base image offline.
 PKGS=(python3.11 python3.11-pip nginx openssl curl ca-certificates sudo git tar gzip
-      openssh-clients policycoreutils-python-utils
+      openssh-clients policycoreutils-python-utils bubblewrap
       expat openssl-libs sqlite-libs zlib)
 
 echo "==> SATOM Builder offline bundle v${VERSION} -- RHEL family (${OS_TAG})"

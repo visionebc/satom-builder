@@ -13,13 +13,14 @@ Two promises hold everywhere:
 2. [Projects](#2-projects)
 3. [A project's overview](#3-a-projects-overview)
 4. [The editor](#4-the-editor)
-5. [Generating with AI](#5-generating-with-ai)
-6. [My tokens](#6-my-tokens)
-7. [Publisher key](#7-publisher-key)
-8. [Account](#8-account)
-9. [Administration](#9-administration): targets, AI profiles, users, directory sign-in, updates, audit log
-10. [Roles](#10-roles)
-11. [Troubleshooting](#11-troubleshooting)
+5. [Generating with AI](#5-generating-with-ai) and the Assistant
+6. [Library](#6-library)
+7. [My tokens](#7-my-tokens)
+8. [Publisher key](#8-publisher-key)
+9. [Account](#9-account)
+10. [Administration](#10-administration): targets, AI profiles, users, directory sign-in, updates, audit log
+11. [Roles](#11-roles)
+12. [Troubleshooting](#12-troubleshooting)
 
 ## 1. Signing in
 
@@ -81,9 +82,36 @@ The last check (local or on SATOM) is remembered and shown on the overview and i
 
 A connection with a non-empty `password`, `secret`, `token`, `api_key` or `client_secret` cannot be saved: SATOM asks for secrets when the package is imported.
 
+### 4.1 Test data
+
+The **Test data** tab holds what a test run reads instead of SATOM's database, for this project only:
+
+- **Datasets** (views and widgets): one table per dataset the view reads, with exactly the columns SATOM gives a view. The columns come from SATOM's own dataset queries, through the target's rules pack.
+- **Data stores**: the package's stores start from their seed rows; a store that exists only on the target is listed with its columns (its rows never come to the Builder).
+- **Connections**: what each connection answers. HTTP: a list of responses, each with a method (`*` = any), a path (`*` = one path segment, `**` = anything), a status and a JSON body; the first match answers, otherwise the default. PostgreSQL: rows per text found in the SQL.
+- **SATOM and device steps**: what a check, a DDI, certificate or FortiWeb step answers in a test run (ok, yes, no or error, a value, a detail). A test run never reaches a device or SATOM's fleet.
+
+**Generate all** fills everything with synthetic values (lab names such as `fwb-lab-01`, documentation addresses such as 192.0.2.10, `example.com` hosts), the same for the same **Seed**. **Regenerate** on a table redoes only that table. Edit cells in the table, switch to **JSON**, or load a **CSV** file (its header names the columns). **Save test data** keeps your changes; test data is separate from the project and never travels in the package.
+
+### 4.2 Test runs
+
+The **Test run** tab runs the **saved** project with SATOM's own runtime, taken verbatim from the target's rules pack, on the test data, here on the Builder. Nothing is sent to SATOM and nothing leaves the Builder: the run has no network.
+
+- **A view or a widget** renders in SATOM's frame with the test data and the params you choose.
+- **An app** walks its diagram for real against the test data: store writes change a copy of the test data, which you can keep with **Keep these changes in the test data**; API calls get the test responses; *Ask a person* is answered with the answer you pick. The steps, outputs, store writes and what the test data answered are shown, and the steps are marked on the diagram.
+- **A script** (also from the Scripts tab: **Run on test data**) runs in SATOM's jail with SATOM's SDK: `inputs`, `result`, `log` and `connection()`, answered by the test data. The result, the log, the exit code and the connection calls are shown.
+
+Every run is kept: the history lists the last 50 runs of the project, with their inputs (passwords masked), and a run goes on if you close the page. Test runs need SATOM 4.2.0 or later on the target; script runs need `bubblewrap` on the Builder server (the installer installs it; the tab says so when it is missing).
+
+### 4.3 From the Builder to production
+
+1. Build and test here: **Check** (the rules pack), then **Test run** on your test data until it does what you want.
+2. Send it to your **test SATOM**: link the project to that target, **Validate on SATOM**, **Rehearse** (unarmed, against that server's own objects), then **Import** (it lands in draft or testing there).
+3. For **production**, download the signed package (**Download package**) and import it in the production SATOM, or import it through a production target with a token that may import. The production SATOM checks it again with its own rules.
+
 ## 5. Generating with AI
 
-The overview's **Generate with AI** card drafts or changes the project with a model an administrator has set up (section 9).
+The overview's **Generate with AI** card drafts or changes the project with a model an administrator has set up (section 10).
 
 1. Pick an **AI profile**, describe what you want, and set **Max rounds** (1 to 6, default 3).
 2. **What will be sent** shows the exact request: the *system* part (the rules pack's author guide, generated from SATOM's rules, followed by the output contract) and the *user* part (the target's names and shapes, the current draft, your text), with its size. Data rows, connection secrets, your tokens and the provider keys are never in it. Seed rows of data stores are left out too; the Builder keeps them.
@@ -92,7 +120,21 @@ The overview's **Generate with AI** card drafts or changes the project with a mo
 
 Generation needs the target's rules pack: if it is missing or was made for another SATOM version, generation is blocked and the message says why. Provider errors (a wrong key, rate limiting, a refusal) are shown with the provider's message and the key removed. With an Anthropic profile on Anthropic's own API, a request the model declines is retried automatically on Anthropic's recommended fallback model, if the profile allows it.
 
-## 6. My tokens
+### 5.1 The Assistant (conversations)
+
+The editor's **Assistant** tab keeps conversations with an AI profile about the project. Each conversation is stored on the Builder with its files: close the page or open the project tomorrow and it is there, with the status of every reply.
+
+- **Attach** images (PNG, JPEG, GIF, WebP, up to 5 MB) and text files (code, JSON, CSV, YAML, logs, up to 512 KB). Images reach the model as images: pick a profile whose model reads images. Text files go into the request.
+- **Send** (or Ctrl+Enter) saves the project and starts the reply on the server. The model gets the author guide, the target's names and shapes, the saved draft, the conversation so far and your files; never data rows or secrets.
+- A reply may answer a question without changing anything, or propose a draft. A draft is checked by the rules pack and repaired like Generate; problems left are shown under the reply.
+- **Apply to the project** makes the draft the project (a normal save: the previous version is kept as a revision). Until then nothing changes. **Show the draft** shows it first.
+- A reply cut by a restart of the Builder is marked as such: send the message again.
+
+## 6. Library
+
+**Library** (in the sidebar) shows, for a target you have a token for, what a plugin builds on: the **datasets** a view reads and their columns, the **data stores** and their columns, the **API Catalog** with every version's endpoints, the **Fortinet API library** (pick a build to list its endpoints, open one for its fields), the **step kinds** of a diagram, the **script SDK** and the **author guide**. It is read with your token and shows structure only: no row of the target's data and no secret. **Refresh from SATOM** reads it again. It needs SATOM 4.2.0 or later on the target.
+
+## 7. My tokens
 
 Everything the Builder does in a SATOM runs with **your own SATOM API token**, so it carries your RBAC and your ADOM and SATOM's audit log names you. Create the token in SATOM: an administrator with the *users.manage* permission creates it under **Administrator → API Tokens** and picks you as its owner (the token is shown once). Then paste it on **My tokens** next to the target.
 
@@ -104,17 +146,17 @@ Everything the Builder does in a SATOM runs with **your own SATOM API token**, s
 
 Tokens are encrypted at rest. The page only says *set* or *not set*. **Test** fetches the target and shows who you are on SATOM, your scopes and the ADOM; **Remove** deletes your token. A token that SATOM rejects is reported as "your SATOM token is invalid or lacks scope X".
 
-## 7. Publisher key
+## 8. Publisher key
 
 The installation signs every package with its own Ed25519 publisher key (created by the installer). The page shows the **key_id** and the **public key** (base64 of the raw 32 bytes); the private key never leaves the server.
 
 A SATOM that trusts this key (*Trusted publishers*) treats the Builder's packages as signed: views and widgets land in *testing* instead of *draft*. To register the key, click **Register on target**: the Builder calls SATOM with **your** token, which must have scope `admin` and belong to a SATOM super-admin. Registering again is harmless (SATOM answers with the existing key_id). A super-admin can also paste the public key into SATOM by hand.
 
-## 8. Account
+## 9. Account
 
 Shows your user name, role, how you sign in and your last sign-in. Local users can change their password here (at least 12 characters). Directory users change theirs in the directory.
 
-## 9. Administration
+## 10. Administration
 
 The *Administrator* part of the sidebar is shown to administrators only. On a phone (768 px or narrower) the sidebar is hidden: the menu button at the top left opens it over the page, and a tap outside or Escape closes it.
 
@@ -191,7 +233,7 @@ Upload a signed Builder update package (`satom-builder-update-<version>`, as .ta
 
 Every security-relevant action is recorded with its time, user, object, details and address: sign-ins (successful, failed and blocked), sign-outs, password changes, user, target, AI profile and directory changes, token changes and tests, publisher registrations, project creation, adoption, changes and deletion, validations, rehearsals and imports on SATOM, package downloads, generation jobs and update requests. Secrets never appear in it. Filter by user, action or object.
 
-## 10. Roles
+## 11. Roles
 
 | | author | admin |
 |---|---|---|
@@ -201,7 +243,7 @@ Every security-relevant action is recorded with its time, user, object, details 
 
 What you may do *in SATOM* is decided by SATOM, from your token.
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Message | What to do |
 |---|---|
