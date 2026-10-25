@@ -107,6 +107,24 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Fixed
 
+- **The project page now shows your AI conversations, as the editor does.**
+  Reported: "the Builder has two chats, one on the project and one in the
+  editor; the editor's has the history, the project's does not". Both read
+  the same conversations, but the project page hid them behind a dropdown
+  that started on "New conversation" and showed one line per turn. It now
+  lists every conversation (title, requests, date, working), opens one with
+  each request and what the AI answered (status badge, its note), **What it
+  did** per turn, **Show this result (and apply it)**, the Generate button
+  reading **Continue**, and **New conversation** to start over.
+- **An app's AI no longer claims SATOM has no FortiGate data.** Asked for "an
+  app that looks an IP up in FortiGate: ADOM, UID, rules", the model answered
+  that the server had no FortiGate dataset. The app's prompt listed every
+  dataset key, but no diagram step can read a dataset (only views and widgets
+  do). An app's prompt now says so, counts the datasets per product for a
+  view, and tells the model to answer that it is a view's job (a view with an
+  input parameter, the IP, reads and filters them) instead of saying the data
+  does not exist.
+
 - **Replacing a token kept the old token's library.** The Library, the
   Datasets tab and the AI kept listing what the previous token reached until
   the cache expired; a new or removed token now drops that link's library

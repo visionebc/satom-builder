@@ -158,39 +158,82 @@
   // works when the page opens is followed again: closing the page loses nothing.
   var threads = [];
   function when(ts) { return ts ? new Date(ts * 1000).toLocaleString() : ''; }
+  function turnBadge(u) {
+    var map = u.status === 'running' ? ['info', 'working...'] : u.status === 'failed' ? ['danger', 'failed'] :
+      !u.has_draft ? ['secondary', 'no draft'] : u.ok ? ['success', 'passes the rules'] : ['warning', 'problems left'];
+    return el('span', {'class': 'fw-badge fw-badge-' + map[0], text: map[1]});
+  }
+  function renderThreadList() {
+    var box = $('sb-threads');
+    if (!box) { return; }
+    clear(box);
+    var id = $('sb-thread').value;
+    if (!threads.length) {
+      box.appendChild(el('p', {'class': 'sb-help mb-0', text: 'No conversation yet. What you ask is kept here and in the editor, for you and this project only.'}));
+      return;
+    }
+    threads.forEach(function (t) {
+      var b = el('button', {type: 'button', role: 'listitem', 'class': 'sb-thread-item' + (t.thread === id ? ' is-selected' : ''),
+                            'aria-current': t.thread === id ? 'true' : null, 'data-thread': t.thread}, [
+        el('strong', {text: t.title || '(no text)'}),
+        el('small', {'class': 'sb-help', text: ' ' + t.turns.length + ' request(s) \u00b7 ' + when(t.updated_at)}),
+        t.running ? el('span', {'class': 'fw-badge fw-badge-info ms-1', text: 'working...'}) : null]);
+      b.addEventListener('click', function () { $('sb-thread').value = t.thread; renderThreadView(); });
+      box.appendChild(b);
+    });
+  }
   function renderThreadView() {
     var view = $('sb-thread-view');
+    renderThreadList();
+    if ($('sb-generate-text')) { $('sb-generate-text').textContent = $('sb-thread').value ? 'Continue' : 'Generate'; }
     if (!view) { return; }
     clear(view);
     var id = $('sb-thread').value;
     var t = threads.filter(function (x) { return x.thread === id; })[0];
-    if (!t) { return; }
+    if (!t) {
+      view.appendChild(el('p', {'class': 'sb-help mb-0', text: 'New conversation. It stays in the list: come back to it and continue it when you want.'}));
+      return;
+    }
+    view.appendChild(el('p', {'class': 'sb-help'}, [el('strong', {text: t.title || '(no text)'}),
+      ' -- continuing: the AI starts from the project as saved and gets these requests and what they came to.']));
     t.turns.forEach(function (u) {
-      view.appendChild(el('div', {'class': 'sb-turn'}, [
-        el('div', {'class': 'sb-turn-you'}, [el('strong', {text: 'You: '}), u.prompt]),
-        el('div', {'class': 'sb-turn-ai sb-help'}, ['AI' + (u.profile ? ' (' + u.profile + ')' : '') + ' \u00b7 ' + when(u.created_at) + ': ' + u.outcome])]));
+      view.appendChild(el('div', {'class': 'sb-turn-you-box'}, [
+        el('div', {'class': 'sb-help', text: 'You \u00b7 ' + when(u.created_at)}),
+        el('div', {'class': 'sb-turn-you', text: u.prompt})]));
+      var ai = el('div', {'class': 'sb-turn-ai-box', 'data-job': u.job_id}, [
+        el('div', {'class': 'sb-help'}, ['AI' + (u.profile ? ' \u00b7 ' + u.profile : '') + ' ', turnBadge(u)]),
+        el('div', {'class': 'sb-turn-ai', text: u.status === 'running' ? 'Working on it: follow it below.' : u.outcome})]);
+      if (u.status !== 'running') {
+        var act = el('div');
+        var d = el('details', {'class': 'sb-turn-did'}, [el('summary', {'class': 'sb-help', text: 'What it did'}), act]);
+        d.addEventListener('toggle', function () {
+          if (!d.open || act.firstChild) { return; }
+          SB.api('GET', '/api/jobs/' + u.job_id).then(function (r) {
+            if (!r.ok) { showError(act, r.data, r.status); return; }
+            if (window.SBActivity) { window.SBActivity.renderActivity(act, r.data.progress, {key: 'turn-' + u.job_id, running: false}); }
+          });
+        });
+        ai.appendChild(d);
+        if (u.has_draft) {
+          var show = el('button', {'class': 'btn btn-sm btn-outline-secondary mt-1', type: 'button', 'data-show-job': u.job_id},
+                        [el('i', {'class': 'bi bi-box-arrow-in-down me-1'}), 'Show this result (and apply it)']);
+          show.addEventListener('click', function () {
+            SB.api('GET', '/api/jobs/' + u.job_id).then(function (r) {
+              if (!r.ok) { showError($('sb-rounds-out'), r.data, r.status); return; }
+              renderRounds(r.data);
+              $('sb-rounds-out').scrollIntoView({block: 'nearest'});
+            });
+          });
+          ai.appendChild(show);
+        }
+      }
+      view.appendChild(ai);
     });
-    var open = el('a', {'class': 'btn btn-sm btn-outline-secondary mt-1', href: '/projects/' + pid + '/edit#ai=' + t.thread},
-                  [el('i', {'class': 'bi bi-box-arrow-up-right me-1'}), 'Open this conversation in the editor']);
-    view.appendChild(open);
+    view.appendChild(el('a', {'class': 'btn btn-sm btn-outline-secondary mt-1', href: '/projects/' + pid + '/edit#ai=' + t.thread},
+                             [el('i', {'class': 'bi bi-box-arrow-up-right me-1'}), 'Open this conversation in the editor']));
   }
-  function loadHistory(select) {
-    var sel = $('sb-thread');
-    if (!sel) { return Promise.resolve([]); }
-    return SB.api('GET', base + '/ai-history').then(function (r) {
-      if (!r.ok) { return []; }
-      threads = r.data.threads || [];
-      var keep = select || sel.value;
-      clear(sel);
-      sel.appendChild(el('option', {value: '', text: 'New conversation'}));
-      threads.forEach(function (t) {
-        sel.appendChild(el('option', {value: t.thread, text: (t.running ? '\u23f3 ' : '') + (t.title || '(no text)') +
-          ' \u2014 ' + t.turns.length + ' request(s), ' + when(t.updated_at)}));
-      });
-      sel.value = threads.some(function (t) { return t.thread === keep; }) ? keep : '';
-      renderThreadView();
-      return threads;
-    });
+  if ($('sb-thread-new')) {
+    $('sb-thread-new').addEventListener('click', function () { $('sb-thread').value = ''; renderThreadView(); $('sb-prompt').focus(); });
   }
   if ($('sb-thread')) {
     $('sb-thread').addEventListener('change', renderThreadView);

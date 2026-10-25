@@ -84,16 +84,21 @@
           <select class="form-select" id="sb-profile">{% for pr in profiles %}<option value="{{ pr.id }}">{{ pr.name }} ({{ pr.model }})</option>{% endfor %}</select></div>
         <div class="col-md-3"><label class="form-label" for="sb-rounds">Max rounds</label>
           <input class="form-control" id="sb-rounds" type="number" min="1" max="6" value="3"></div>
-        <div class="col-12"><label class="form-label" for="sb-thread">Conversation</label>
-          <select class="form-select" id="sb-thread"><option value="">New conversation</option></select>
-          <div class="sb-help">Your conversations with the AI on this project -- yours only. Continue one, or open it in the editor.</div>
-          <div id="sb-thread-view" class="mt-2"></div></div>
+        <div class="col-12"><span class="form-label d-block" id="sb-threads-label">Your conversations</span>
+          <div id="sb-threads" class="sb-threads" role="list" aria-labelledby="sb-threads-label"></div>
+          <div class="d-flex flex-wrap gap-2 align-items-end mt-2">
+            <div><label class="form-label" for="sb-thread">Conversation</label>
+              <select class="form-select form-select-sm" id="sb-thread"><option value="">New conversation</option></select></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="sb-thread-new"><i class="bi bi-plus-lg me-1"></i>New conversation</button>
+          </div>
+          <div class="sb-help">Your conversations with the AI on this project -- yours only, the same ones the editor's AI window shows. Open one to read it and continue it.</div>
+          <div id="sb-thread-view" class="sb-thread-view mt-2" aria-live="polite"></div></div>
         <div class="col-12"><label class="form-label" for="sb-prompt">What do you want?</label>
           <textarea class="form-control" id="sb-prompt" rows="4" maxlength="20000" placeholder="For example: an app with a form that asks for a hostname and a diagram that looks it up in the ddi connection..."></textarea></div>
       </div>
       <div class="sb-actions mt-2">
         <button class="btn btn-sm btn-outline-secondary" data-sb-action="preview" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-eye me-1"></i>What will be sent</button>
-        <button class="btn btn-sm btn-fw-primary" data-sb-action="generate" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-magic me-1"></i>Generate</button>
+        <button class="btn btn-sm btn-fw-primary" data-sb-action="generate" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-magic me-1"></i><span id="sb-generate-text">Generate</span></button>
       </div>
       <div id="sb-preview" class="mt-2"></div>
       <div id="sb-rounds-out" class="mt-2" aria-live="polite"></div>

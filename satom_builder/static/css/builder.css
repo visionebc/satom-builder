@@ -163,3 +163,14 @@
 /* the project page's view of one AI conversation */
 .sb-turn { border-left: 3px solid var(--fw-border, #DCE4F3); padding: 3px 0 3px 10px; margin-bottom: 6px; overflow-wrap: anywhere; }
 .sb-turn-ai { margin-top: 1px; }
+
+/* Project overview: the author's AI conversations, as the editor's AI window */
+.sb-threads { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; }
+.sb-thread-item { text-align: left; background: var(--fw-surface-alt); border: 1px solid var(--fw-border); border-radius: 6px; padding: 6px 10px; }
+.sb-thread-item:hover, .sb-thread-item:focus-visible { border-color: var(--fw-accent); }
+.sb-thread-item.is-selected { border-color: var(--fw-accent); background: var(--fw-accent-light); }
+.sb-thread-view { max-height: 520px; overflow: auto; }
+.sb-turn-you-box, .sb-turn-ai-box { border: 1px solid var(--fw-border); border-radius: 6px; padding: 6px 10px; margin-bottom: 6px; }
+.sb-turn-you-box { background: var(--fw-surface-alt); }
+.sb-turn-you, .sb-turn-ai { white-space: pre-wrap; word-break: break-word; }
+

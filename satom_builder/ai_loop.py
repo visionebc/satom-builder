@@ -128,6 +128,32 @@ def dataset_summary(keys) -> dict:
                                   "mkey, parent_id and the object's fields with - read as _"}
 
 
+#: What an app's prompt says about datasets instead of listing them (lab,
+#: 2026-10-25: an app's prompt listed the ~900 dataset keys, no diagram step
+#: can read one, and the model answered "SATOM has no FortiGate dataset").
+APP_DATASET_NOTE = (
+    "An app cannot read SATOM's datasets: no diagram step reads the device cache "
+    "(FortiGate, FortiWeb, FortiADC... objects) or a plugin dataset. Views and widgets read "
+    "them -- counted below, so they DO exist on this server. When the request needs that "
+    "data (look an IP up in the firewall rules, list objects, join two products...), do not "
+    "build an app around it and never say the data does not exist: answer with only "
+    "{\"message\"} explaining that it is a view's job -- a view with an input parameter "
+    "(for example the IP) reads those datasets and filters them -- and that the author "
+    "creates a view project for it (New project, kind view). Build an app only when the "
+    "request is a form and a diagram over the steps listed in the schema.")
+
+
+def app_dataset_note(keys) -> dict:
+    """For an app's prompt: why it reads no dataset, and how many there are
+    per product for a view (names only for views: their prompt lists them)."""
+    per: dict = {}
+    for k in keys or []:
+        prod = str(k).split("_", 1)[0]
+        prod = prod if prod in _OBJECT_PRODUCTS else "builtin_or_admin"
+        per[prod] = per.get(prod, 0) + 1
+    return {"note": APP_DATASET_NOTE, "for_views": dict(sorted(per.items()))}
+
+
 def adom_summary(snapshot: dict) -> dict | None:
     """Contract section 17, for a view's prompt: which ADOM the datasets
     above belong to, how the plugin's ADOM is decided, and how many datasets
@@ -184,7 +210,7 @@ def target_summary(snapshot: dict, kind: str = "app") -> dict:
     choices = snapshot.get("choices") or {}
     return {
         "satom_version": str(snapshot.get("satom_version", "")),
-        "datasets": dataset_summary(choices.get("datasets")),
+        "datasets": app_dataset_note(choices.get("datasets")),
         "existing": {"apps": apps, "stores": stores, "connections": conns,
                      "api_versions": apis, "scripts": scripts},
         # an app reads no dataset: the ~600 keys stay out of its prompt
