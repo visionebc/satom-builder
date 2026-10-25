@@ -30,7 +30,6 @@ import site
 import stat
 import subprocess
 import sys
-import sysconfig
 import tempfile
 import zipfile
 from pathlib import Path
@@ -231,21 +230,27 @@ class RulesPack:
 
 
 def child_sys_path() -> list[str]:
-    """The standard library and the venv's site-packages: nothing else (no
-    cwd, no user site, not the Builder's own source tree)."""
-    paths = []
-    for key in ("stdlib", "platstdlib"):
-        p = sysconfig.get_paths().get(key)
-        if p and p not in paths:
-            paths.append(p)
-    dyn = os.path.join(sysconfig.get_paths()["platstdlib"], "lib-dynload")
-    if os.path.isdir(dyn) and dyn not in paths:
-        paths.append(dyn)
-    for p in site.getsitepackages():
-        if os.path.isdir(p) and p not in paths:
-            paths.append(p)
-    builder_src = str(Path(__file__).resolve().parent.parent)
-    return [p for p in paths if os.path.abspath(p) != builder_src]
+    """The interpreter's own import path minus everything that is not the
+    standard library or installed packages: no cwd, no user site, not the
+    Builder's own source tree.
+
+    Read from ``sys.path`` (not ``sysconfig``): inside a venv ``sysconfig``
+    names the venv's ``lib/pythonX.Y``, which has no ``lib-dynload``, and the
+    pack then cannot import C-backed stdlib modules (``_contextvars``, found
+    running SATOM's real pack, 2026-10-25)."""
+    builder_src = os.path.abspath(str(Path(__file__).resolve().parent.parent))
+    user_site = os.path.abspath(site.getusersitepackages()) if site.ENABLE_USER_SITE else ""
+    cwd = os.path.abspath(os.getcwd())
+    out: list[str] = []
+    for p in sys.path:
+        if not p:
+            continue
+        ap = os.path.abspath(p)
+        if ap in (builder_src, cwd, user_site) or ap in out:
+            continue
+        if os.path.isdir(ap) or (ap.endswith(".zip") and os.path.isfile(ap)):
+            out.append(ap)
+    return out
 
 
 # --------------------------------------------------------------------------
