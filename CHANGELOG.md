@@ -5,6 +5,8 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
 **Every dataset of the target, kept in line with SATOM (SATOM 4.3.0).**
 Requested: "create the ~600 plus what the administrator creates, so there are
 examples and if something is missing an administrator can create it; the
