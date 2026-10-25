@@ -67,12 +67,19 @@ function boot() {
   ctx.ensureSaved = async () => (M.isDirty(ctx.project, ctx.saved) || rawTab.pending() ? save() : true);
 
   /* ── header ────────────────────────────────────────────────────────── */
+  /* The backend stores {source, at, result}; a fresh check() answer is the
+     result itself. Read both (lab run 2026-10-25: a passed stored check
+     showed as a red "0 problem(s)"). */
+  function checkOf(lc) {
+    if (!lc) return null;
+    return (lc.result && typeof lc.result === "object") ? lc.result : lc;
+  }
   function header() {
     const p = ctx.project;
     $("ed-title").textContent = p.name || "(no name)";
     $("ed-slug").textContent = p.slug || "";
     $("ed-version").textContent = p.version ? "v" + p.version : "";
-    const lc = p.last_check;
+    const lc = checkOf(p.last_check);
     const b = $("ed-check-badge");
     if (!lc) { b.className = "fw-badge fw-badge-secondary"; b.textContent = "Not checked"; }
     else if (lc.ok) { b.className = "fw-badge fw-badge-success"; b.textContent = "Last check passed"; }
@@ -454,7 +461,7 @@ function boot() {
     M.clearDrafts(window.localStorage, fresh.id);
     syncDetails();
     updateDirty();
-    if (fresh.last_check) setCheck(fresh.last_check, "Check of the generated draft");
+    if (fresh.last_check) setCheck(checkOf(fresh.last_check), "Check of the generated draft");
     else keepFocus(() => renderActive());
     const rounds = j.rounds || [];
     const last = rounds[rounds.length - 1];
@@ -499,7 +506,7 @@ function boot() {
   /* ── start ─────────────────────────────────────────────────────────── */
   header();
   updateDirty();
-  ctx.check = ctx.project.last_check || null;
+  ctx.check = checkOf(ctx.project.last_check);
   ctx.checkSource = ctx.check ? "Last check stored with the project" : "";
   renderChecks();
   offerDraft();

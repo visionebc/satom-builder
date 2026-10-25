@@ -347,3 +347,4 @@ These amend the sections above. Where they conflict, this section wins.
 - `POST …/generate` answers `202`.
 - `GET` and `DELETE /api/projects/<id>/assets/<sha>`.
 - A draft connection that carries a secret value is refused with `400 secret_in_draft`.
+- `last_check` is stored and returned as `{"source": "local"|"remote", "at": <epoch>, "result": <check() result>}`, or `null`. A fresh `check()` answer is the bare result.
