@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}My tokens — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-key me-2"></i>My SATOM tokens</h1></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p>Everything the Builder does in a SATOM runs with <strong>your own</strong> SATOM API token, so it carries your RBAC and your ADOM, and SATOM's audit log names you. Create the token in SATOM (Profile › API tokens). Scopes: <span class="sb-mono">read</span> to see the target, <span class="sb-mono">write</span> to validate and rehearse, <span class="sb-mono">admin</span> (as a super-admin) to import and to register the publisher key.</p>
+  <p class="sb-help mb-0">Tokens are encrypted at rest and never shown again: this page only says whether one is set.</p>
+</div></div>
+{% if not rows %}
+<div class="fw-card"><div class="fw-card-body">No SATOM target exists yet. {% if current_user.is_admin %}Add one under <a href="{{ url_for('admin.targets_page') }}">Targets</a>.{% else %}Ask an administrator to add one.{% endif %}</div></div>
+{% endif %}
+{% for r in rows %}
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">{{ r.t.name }} <span class="sb-help ms-2">{{ r.t.base_url }}</span></h2>
+    <span>Token: {{ m.secret_state(r.set) }}</span></div>
+  <div class="fw-card-body">
+    {% if r.set and r.caller %}
+    <p class="sb-help">Last seen as <strong>{{ r.caller.username }}</strong> on SATOM {{ r.satom_version }} — scopes {{ (r.caller.scopes or [])|join(', ') or '—' }}{% if r.caller.can_author %}, may author{% endif %}{% if r.caller.can_import %}, may import{% endif %} ({{ m.when(r.fetched_at) }}).</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('me.token_set', tid=r.t.id) }}" class="d-flex flex-wrap gap-2" autocomplete="off">
+      {{ m.csrf() }}
+      <input class="form-control form-control-sm" style="max-width: 420px" type="password" name="token" placeholder="{{ 'replace the token' if r.set else 'paste your SATOM API token' }}" autocomplete="new-password" aria-label="SATOM API token">
+      <button class="btn btn-sm btn-fw-primary" name="action" value="set" type="submit">Save</button>
+      {% if r.set %}
+      <button class="btn btn-sm btn-outline-secondary" name="action" value="test" type="submit" formnovalidate>Test</button>
+      <button class="btn btn-sm btn-outline-danger" name="action" value="clear" type="submit" formnovalidate>Remove</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

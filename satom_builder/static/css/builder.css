@@ -1,0 +1,88 @@
+/* SATOM Builder on top of SATOM's light theme (vendor/satom/fortiweb.css).
+   Only overrides live here; fortiweb.css stays byte-identical to SATOM's. */
+
+/* fortiweb.css declares Inter at ../vendor/inter/, which does not resolve
+   from vendor/satom/. The same faces, with the path that does. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../vendor/inter/InterVariable.woff2") format("woff2");
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../vendor/inter/InterVariable-Italic.woff2") format("woff2");
+}
+
+:root {
+  --fw-accent: #EF5424;
+  --fw-accent-hover: #C9411A;
+  --fw-accent-light: rgba(239, 84, 36, 0.12);
+  --fw-sidebar-active: #EF5424;
+}
+
+.btn-fw-primary, .fw-btn-primary {
+  background: var(--fw-accent);
+  background-image: none;
+  border-color: var(--fw-accent);
+  color: #fff;
+}
+.btn-fw-primary:hover, .fw-btn-primary:hover,
+.btn-fw-primary:focus, .fw-btn-primary:focus {
+  background: var(--fw-accent-hover);
+  border-color: var(--fw-accent-hover);
+  color: #fff;
+}
+.btn-fw-primary:disabled, .fw-btn-primary:disabled { opacity: .55; }
+.btn-outline-primary {
+  --bs-btn-color: #C9411A; --bs-btn-border-color: var(--fw-accent);
+  --bs-btn-hover-bg: var(--fw-accent); --bs-btn-hover-border-color: var(--fw-accent);
+  --bs-btn-active-bg: var(--fw-accent-hover); --bs-btn-active-border-color: var(--fw-accent-hover);
+  --bs-btn-disabled-color: #C9411A; --bs-btn-disabled-border-color: var(--fw-accent);
+}
+
+.fw-main a:not(.btn) { color: #C9411A; }
+.fw-main a:not(.btn):hover { color: #9E3112; }
+.fw-topbar-brand, .fw-topbar-brand:hover { color: var(--fw-topbar-text, #fff); text-decoration: none; }
+
+.sb-mark {
+  width: 28px; height: 28px; border-radius: 6px; display: inline-flex;
+  align-items: center; justify-content: center; background: var(--fw-accent);
+  color: #fff; font-size: 16px; flex-shrink: 0;
+}
+
+.sb-footer {
+  margin-left: var(--fw-sidebar-width);
+  padding: 10px 24px; font-size: 12px; color: var(--fw-text-secondary);
+}
+.fw-sidebar.collapsed ~ .fw-main { margin-left: 0; }
+
+.sb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.sb-pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+  background: var(--fw-surface-alt); border: 1px solid var(--fw-border); border-radius: 6px;
+  padding: 10px 12px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+.sb-status-set { color: var(--fw-success); font-weight: 600; }
+.sb-status-unset { color: var(--fw-text-secondary); }
+.sb-problems li { margin-bottom: 2px; }
+.sb-problems .sb-where { font-family: ui-monospace, monospace; font-size: 12px; color: var(--fw-text-secondary); }
+.sb-round { border-left: 3px solid var(--fw-border); padding-left: 10px; margin-bottom: 8px; }
+.sb-round.ok { border-left-color: var(--fw-success); }
+.sb-round.bad { border-left-color: var(--fw-danger); }
+.sb-help { font-size: 12.5px; color: var(--fw-text-secondary); }
+.sb-actions .btn { margin: 0 6px 6px 0; }
+.sb-kv th { width: 180px; color: var(--fw-text-secondary); font-weight: 500; }
+
+/* sign-in page */
+.sb-login-wrap { max-width: 420px; margin: 8vh auto; padding: 20px; }
+.sb-login-card { background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.18); overflow: hidden; }
+.sb-login-head { background: var(--fw-topbar-bg); padding: 28px 32px; text-align: center; color: #fff; }
+.sb-login-head .sb-mark { width: 56px; height: 56px; font-size: 30px; border-radius: 12px; margin-bottom: 12px; }
+.sb-login-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+.sb-login-head p { margin: 0; color: var(--fw-sidebar-text); font-size: 13px; }
+.sb-login-body { padding: 28px 32px; }

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Directory sign-in — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-diagram-3 me-2"></i>Directory sign-in</h1></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p class="sb-help">The same engines as SATOM: LDAP and Active Directory through <span class="sb-mono">ldap3</span>, RADIUS (FortiAuthenticator, FortiToken push) through <span class="sb-mono">pyrad</span>. Local users always sign in with their local password; any other user name is tried against the directory.</p>
+  <form method="post" action="{{ url_for('admin.directory_save') }}" class="row g-3" autocomplete="off">
+    {{ m.csrf() }}
+    <div class="col-md-3"><label class="form-label" for="d-mode">Mode</label>
+      <select class="form-select" id="d-mode" name="mode">
+        {% for k, label in [('off', 'Off (local users only)'), ('ldap', 'LDAP'), ('ad', 'Active Directory'), ('radius', 'RADIUS')] %}
+        <option value="{{ k }}" {{ 'selected' if cfg.mode == k }}>{{ label }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-5"><label class="form-label" for="d-host">Host</label><input class="form-control sb-mono" id="d-host" name="host" value="{{ cfg.host }}"></div>
+    <div class="col-md-2"><label class="form-label" for="d-port">Port</label><input class="form-control" id="d-port" name="port" value="{{ cfg.port }}" placeholder="389 / 636 / 1812"></div>
+    <div class="col-md-2"><label class="form-label" for="d-timeout">Timeout (s)</label><input class="form-control" id="d-timeout" name="timeout" value="{{ cfg.timeout }}"></div>
+
+    <div class="col-12"><h2 class="fw-form-section-title">LDAP / Active Directory</h2></div>
+    <div class="col-md-4 form-check ms-2"><input class="form-check-input" type="checkbox" id="d-ssl" name="use_ssl" {{ 'checked' if cfg.use_ssl }}><label class="form-check-label" for="d-ssl">LDAPS (TLS from the start)</label></div>
+    <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="d-stls" name="start_tls" {{ 'checked' if cfg.start_tls }}><label class="form-check-label" for="d-stls">StartTLS</label></div>
+    <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" id="d-verify" name="tls_verify" {{ 'checked' if cfg.tls_verify }}><label class="form-check-label" for="d-verify">Verify the server certificate</label></div>
+    <div class="col-md-6"><label class="form-label" for="d-base">Base DN</label><input class="form-control sb-mono" id="d-base" name="base_dn" value="{{ cfg.base_dn }}"></div>
+    <div class="col-md-6"><label class="form-label" for="d-dom">AD domain (UPN suffix)</label><input class="form-control sb-mono" id="d-dom" name="ad_domain" value="{{ cfg.ad_domain }}" placeholder="corp.example.com"></div>
+    <div class="col-md-6"><label class="form-label" for="d-bind">Bind DN (service account, LDAP)</label><input class="form-control sb-mono" id="d-bind" name="bind_dn" value="{{ cfg.bind_dn }}"></div>
+    <div class="col-md-6"><label class="form-label" for="d-bpw">Bind password — {{ m.secret_state(bind_set) }}</label>
+      <input class="form-control" type="password" id="d-bpw" name="bind_password" placeholder="{{ 'leave empty to keep' if bind_set else '' }}" autocomplete="new-password">
+      {% if bind_set %}<div class="form-check"><input class="form-check-input" type="checkbox" id="d-cbpw" name="clear_bind_password"><label class="form-check-label sb-help" for="d-cbpw">remove it</label></div>{% endif %}</div>
+    <div class="col-md-4"><label class="form-label" for="d-attr">User attribute</label><input class="form-control sb-mono" id="d-attr" name="user_attr" value="{{ cfg.user_attr }}" placeholder="uid / sAMAccountName"></div>
+    <div class="col-md-8"><label class="form-label" for="d-filter">User filter (LDAP)</label><input class="form-control sb-mono" id="d-filter" name="user_filter" value="{{ cfg.user_filter }}" placeholder="(&(objectClass=person)(uid={username}))"></div>
+    <div class="col-12"><label class="form-label" for="d-ca">CA bundle for the directory (PEM, optional)</label>
+      <textarea class="form-control sb-mono" id="d-ca" name="ca_pem" rows="3">{{ cfg.ca_pem }}</textarea>
+      {% if cfg.ca_pem %}<div class="form-check"><input class="form-check-input" type="checkbox" id="d-cca" name="clear_ca"><label class="form-check-label sb-help" for="d-cca">remove the CA bundle</label></div>{% endif %}</div>
+
+    <div class="col-12"><h2 class="fw-form-section-title">RADIUS</h2></div>
+    <div class="col-md-6"><label class="form-label" for="d-sec">Shared secret — {{ m.secret_state(secret_set) }}</label>
+      <input class="form-control" type="password" id="d-sec" name="secret" placeholder="{{ 'leave empty to keep' if secret_set else '' }}" autocomplete="new-password">
+      {% if secret_set %}<div class="form-check"><input class="form-check-input" type="checkbox" id="d-csec" name="clear_secret"><label class="form-check-label sb-help" for="d-csec">remove it</label></div>{% endif %}</div>
+    <div class="col-md-6"><label class="form-label" for="d-nas">NAS-Identifier</label><input class="form-control sb-mono" id="d-nas" name="nas_id" value="{{ cfg.nas_id }}"></div>
+
+    <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="d-auto" name="auto_create" {{ 'checked' if cfg.auto_create }}>
+      <label class="form-check-label" for="d-auto">Create users on their first directory sign-in (role <strong>author</strong>)</label></div>
+    <div class="col-12"><button class="btn btn-fw-primary" type="submit">Save</button></div>
+  </form>
+</div></div>
+
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">Test connection</h2></div>
+  <div class="fw-card-body">
+    <p class="sb-help">Without credentials the test checks that the server is reachable and the service bind works (RADIUS: that the host resolves). With a test user name and password it runs a full authentication. Save first: the test uses the saved settings.</p>
+    <form method="post" action="{{ url_for('admin.directory_test') }}" class="d-flex flex-wrap gap-2" autocomplete="off">
+      {{ m.csrf() }}
+      <input class="form-control form-control-sm" style="max-width: 220px" name="test_username" placeholder="test user (optional)" aria-label="Test user name">
+      <input class="form-control form-control-sm" style="max-width: 220px" type="password" name="test_password" placeholder="password" autocomplete="new-password" aria-label="Test password">
+      <button class="btn btn-sm btn-outline-primary" type="submit">Test connection</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

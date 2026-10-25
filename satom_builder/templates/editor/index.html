@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{# Placeholder owned by the editor branch (app-editor), which replaces it.
+   Context from views/editor.py: project (section-11 shape + owner), target
+   ({id, name, base_url, has_token} or None), csrf_token (a string) and api
+   (the section-11 URLs of this project). #}
+{% block title %}Editor — {{ project.name }}{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi {{ project.icon }} me-2"></i>{{ project.name }}</h1>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ api.overview }}">Back to the overview</a></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p class="mb-0">The structured editor is not installed in this build.</p>
+</div></div>
+{% endblock %}

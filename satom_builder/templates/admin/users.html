@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Users — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-people me-2"></i>Users</h1></div>
+<div class="fw-card">
+  <table class="table fw-table mb-0 align-middle">
+    <thead><tr><th>User</th><th>Role</th><th>Signs in with</th><th>State</th><th>Last sign-in</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for u in rows %}
+    <tr>
+      <td>{{ u.username }}{% if u.id == current_user.id %} <span class="sb-help">(you)</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.users_update', uid=u.id) }}" class="d-flex gap-1">
+          {{ m.csrf() }}<input type="hidden" name="action" value="role">
+          <select class="form-select form-select-sm" name="role" aria-label="Role">
+            <option value="author" {{ 'selected' if u.role == 'author' }}>author</option>
+            <option value="admin" {{ 'selected' if u.role == 'admin' }}>admin</option>
+          </select>
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Set</button>
+        </form>
+      </td>
+      <td>{{ u.source }}</td>
+      <td>{% if u.enabled %}<span class="fw-badge fw-badge-success">enabled</span>{% else %}<span class="fw-badge fw-badge-secondary">disabled</span>{% endif %}</td>
+      <td>{{ m.when(u.last_login) }}</td>
+      <td class="d-flex flex-wrap gap-1">
+        <form method="post" action="{{ url_for('admin.users_update', uid=u.id) }}">
+          {{ m.csrf() }}<input type="hidden" name="action" value="{{ 'disable' if u.enabled else 'enable' }}">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Disable' if u.enabled else 'Enable' }}</button></form>
+        {% if u.source == 'local' %}
+        <form method="post" action="{{ url_for('admin.users_update', uid=u.id) }}" class="d-flex gap-1" autocomplete="off">
+          {{ m.csrf() }}<input type="hidden" name="action" value="password">
+          <input class="form-control form-control-sm" type="password" name="password" minlength="12" placeholder="new password" autocomplete="new-password" aria-label="New password" style="width: 150px">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Reset</button></form>
+        {% endif %}
+        <form method="post" action="{{ url_for('admin.users_update', uid=u.id) }}" data-confirm="Delete {{ u.username }} with their projects and tokens?">
+          {{ m.csrf() }}<input type="hidden" name="action" value="delete">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">Add a user</h2></div>
+  <div class="fw-card-body">
+    <form method="post" action="{{ url_for('admin.users_create') }}" class="row g-2" style="max-width: 860px" autocomplete="off">
+      {{ m.csrf() }}
+      <div class="col-md-3"><label class="form-label" for="u-name">User name</label><input class="form-control" id="u-name" name="username" maxlength="80" required></div>
+      <div class="col-md-2"><label class="form-label" for="u-role">Role</label><select class="form-select" id="u-role" name="role"><option value="author">author</option><option value="admin">admin</option></select></div>
+      <div class="col-md-3"><label class="form-label" for="u-src">Signs in with</label><select class="form-select" id="u-src" name="source"><option value="local">local password</option><option value="ldap">LDAP</option><option value="ad">Active Directory</option><option value="radius">RADIUS</option></select></div>
+      <div class="col-md-4"><label class="form-label" for="u-pw">Password (local, 12+)</label><input class="form-control" type="password" id="u-pw" name="password" autocomplete="new-password"></div>
+      <div class="col-12"><button class="btn btn-fw-primary" type="submit">Add user</button>
+        <span class="sb-help ms-2">Directory users can also be created at their first sign-in (Directory sign-in › create users on first sign-in).</span></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

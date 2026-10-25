@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Updates — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-cloud-arrow-up me-2"></i>Updates</h1>
+  <span class="sb-help">running {{ app_version }}</span></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p>Upload a signed SATOM Builder update package (<span class="sb-mono">satom-builder-update-&lt;version&gt;</span>, as .tar, .tar.gz or .zip, at most {{ max_mb }} MB). The web application only queues the request; the updater runs as root from a root-owned copy, verifies the package's Ed25519 signature against the Builder's release keys, backs up the database, migrates and rolls back on failure.</p>
+  <form method="post" action="{{ url_for('admin.updates_enqueue') }}" enctype="multipart/form-data" class="row g-2" style="max-width: 760px">
+    {{ m.csrf() }}<input type="hidden" name="kind" value="package">
+    <div class="col-md-8"><input class="form-control" type="file" name="package" accept=".tar,.tgz,.gz,.zip" required aria-label="Update package"></div>
+    <div class="col-md-4"><button class="btn btn-fw-primary w-100" type="submit">Upload and queue</button></div>
+    <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="u-down" name="allow_downgrade"><label class="form-check-label" for="u-down">Allow a downgrade</label></div>
+  </form>
+  <div class="d-flex gap-2 mt-3">
+    <form method="post" action="{{ url_for('admin.updates_enqueue') }}" data-confirm="Roll back to the previous version?">{{ m.csrf() }}<input type="hidden" name="kind" value="rollback"><button class="btn btn-sm btn-outline-danger" type="submit">Roll back to the previous version</button></form>
+    <form method="post" action="{{ url_for('admin.updates_enqueue') }}" data-confirm="Restart the SATOM Builder service?">{{ m.csrf() }}<input type="hidden" name="kind" value="service"><button class="btn btn-sm btn-outline-secondary" type="submit">Restart the service</button></form>
+  </div>
+</div></div>
+
+{% if pending %}
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">Waiting for the updater</h2></div>
+  <table class="table fw-table mb-0"><thead><tr><th>Request</th><th>Kind</th><th>File</th><th>By</th><th>At</th></tr></thead><tbody>
+  {% for r in pending %}<tr><td class="sb-mono">{{ (r.id or '')[:12] }}</td><td>{{ r.kind }}</td><td class="sb-mono">{{ r.path or '—' }}</td><td>{{ r.requested_by }}</td><td>{{ r.at }}</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">Runs</h2></div>
+  <div class="fw-card-body">
+  {% for s in statuses %}
+    <details class="mb-2">
+      <summary>
+        <span class="sb-mono">{{ s.id[:12] }}</span>
+        <span class="fw-badge {{ {'done': 'fw-badge-success', 'failed': 'fw-badge-danger', 'rolled-back': 'fw-badge-warning', 'running': 'fw-badge-info', 'queued': 'fw-badge-secondary'}.get(s.status, 'fw-badge-secondary') }} ms-1">{{ s.status }}</span>
+        {% if s.from_version or s.to_version %}<span class="sb-help ms-2">{{ s.from_version or '?' }} → {{ s.to_version or '?' }}</span>{% endif %}
+        <span class="sb-help ms-2">{{ s.steps|length }} step(s)</span>
+      </summary>
+      <table class="table table-sm mt-2 mb-0"><thead><tr><th>Step</th><th></th><th>Detail</th><th>At</th></tr></thead><tbody>
+      {% for st in s.steps %}<tr><td>{{ st.name }}</td><td>{% if st.ok %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-x-circle-fill text-danger"></i>{% endif %}</td><td><pre class="sb-pre mb-0">{{ st.detail }}</pre></td><td class="text-nowrap">{{ st.at }}</td></tr>{% endfor %}
+      </tbody></table>
+    </details>
+  {% else %}
+    <p class="mb-0 sb-help">No update has run yet.</p>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}
