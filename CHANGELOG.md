@@ -5,6 +5,18 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **An answer that restates `min_satom` or `format` no longer loses its
+  round.** The author guide describes plugin.json, so a model (gpt-oss) added
+  `"min_satom"` and the Builder refused the whole answer as "Unknown key(s)".
+  The plugin.json keys the Builder writes itself (`kind`, `format`,
+  `min_satom`) are now dropped, and the output contract says to leave them
+  out; any other unknown key is still refused. The crash that started that
+  run ("the package could not be checked: 'list' object has no attribute
+  'get'", a step's `params` written as a list) is fixed in SATOM: the check
+  now names the step and the author guide shows a step.
+
 ## [0.3.0] - 2026-10-25
 
 **Every dataset of the target, kept in line with SATOM (SATOM 4.3.0).**

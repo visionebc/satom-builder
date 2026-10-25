@@ -33,6 +33,9 @@ MAX_PROMPT = 2000
 SECRET_FIELDS = ("password", "secret", "token", "api_key", "client_secret")
 RESULT_KEYS = ("name", "slug", "version", "icon", "description", "files", "app",
                "datasets", "params")
+# plugin.json keys the Builder writes itself: an answer that restates them
+# (the author guide describes plugin.json) loses them, not the round
+BUILDER_KEYS = ("kind", "format", "min_satom")
 
 OUTPUT_CONTRACT = """\
 # Output contract (SATOM Builder)
@@ -50,7 +53,9 @@ Markdown around it. The object is the plugin draft, with these keys:
 - for an app: "app" = the app.json body {"app": {...}, "stores": [...],
   "connections": [...], "apis": [...], "scripts": [...]}.
 
-Keys you leave out keep their current value. Never put a password, token,
+Keys you leave out keep their current value. The Builder writes the kind,
+"format", "min_satom" and the file hashes of plugin.json itself: leave them
+out. Never put a password, token,
 API key or any other secret in the draft: SATOM asks for secrets when the
 package is imported. Seed rows of data stores are not shown to you; return
 stores without "rows" unless you add new seed rows on purpose, and the
@@ -211,7 +216,7 @@ def parse_answer_full(text: str, allow_message: bool = False) -> tuple[dict, str
             raise ParseError(f"The answer is not valid JSON: {exc}") from None
     if not isinstance(obj, dict):
         raise ParseError("The answer is JSON but not an object.")
-    extra = ("kind", "message") if allow_message else ("kind",)
+    extra = BUILDER_KEYS + (("message",) if allow_message else ())
     unknown = [k for k in obj if k not in RESULT_KEYS and k not in extra]
     if unknown:
         raise ParseError(f"Unknown key(s) in the answer: {', '.join(sorted(unknown)[:5])}.")
