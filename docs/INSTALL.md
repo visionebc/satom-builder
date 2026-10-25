@@ -137,9 +137,11 @@ touched. To install a different OS, use the online install.
 
 Debian: the bundle carries the full dependency closure (listed in
 `bundle/debs-closure.txt`), but **base packages are never forced**: a package
-already installed at the bundle's version or newer is skipped, and systemd,
-udev, PAM, libc and their libraries are never touched when any version is
-installed -- the OS image owns those.
+already installed (status `ii`) at the bundle's version or newer is skipped,
+and systemd, udev, PAM, libc and their libraries are never touched when any
+version is installed -- the OS image owns those. The rest is installed in a few
+`dpkg -i` passes (Pre-Depends need them); nothing is ever removed to "fix"
+dependencies.
 
 SUSE: zypper gets a repository directory of its own holding only the bundle;
 nothing is registered on the system. RHEL: dnf reads `bundle/rpms` with

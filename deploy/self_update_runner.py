@@ -423,7 +423,9 @@ def validate_request(raw, stem):
     if kind not in KINDS:
         raise RequestError("unknown request kind %r" % (kind,))
     by = raw.get("requested_by", "")
-    if not isinstance(by, str) or len(by) > 120 or not _PRINTABLE_RE.match(by):
+    # Directory (LDAP/RADIUS) user names may be non-ASCII: any printable text,
+    # no control characters (it reaches a git commit message and the journal).
+    if not isinstance(by, str) or len(by) > 120 or not by.isprintable():
         raise RequestError("requested_by must be printable text of at most 120 characters")
     at = raw.get("at", "")
     if not isinstance(at, str) or len(at) > 40 or not _PRINTABLE_RE.match(at):
