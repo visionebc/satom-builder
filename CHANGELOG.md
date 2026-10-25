@@ -3,6 +3,21 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.4] - 2026-10-25
+
+First public release: the repository and its releases are published at
+https://github.com/visionebc/satom-builder. No change to the application.
+
+### Changed
+
+- **Built-in upgrade feed.** `satom-builder update fetch` reads the
+  `satom-builder-update-latest.json` asset of the latest GitHub release when
+  no `--feed` is given. `SATOM_BUILDER_UPGRADE_FEED` (or `--feed`) still
+  replaces it with an internal mirror.
+- **README** with what Builder guarantees, how to install from a release
+  bundle and how to update; the documentation no longer names internal
+  development repositories.
+
 ## [0.1.3] - 2026-10-25
 
 Fixes found by the first end-to-end runs against a live SATOM, a local model

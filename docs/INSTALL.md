@@ -110,15 +110,16 @@ sudo bash installers/install-satom-builder.sh
 
 The code comes from, in this order: `SETUP_APP_TARBALL` (an `app.tar.gz`), the
 checkout around the script (`git archive HEAD`), or `SETUP_GIT_URL` (asked;
-there is no built-in repository address).
+there is no built-in address; the public repository is
+`https://github.com/visionebc/satom-builder.git`).
 
 ### 2.2 Offline (no network)
 
 Copy the bundle **and its `.sha256`** to the target, then:
 
 ```bash
-sha256sum -c satom-builder-offline-0.1.3-debian12-amd64.tar.gz.sha256
-tar xzf satom-builder-offline-0.1.3-debian12-amd64.tar.gz
+sha256sum -c satom-builder-offline-0.1.4-debian12-amd64.tar.gz.sha256
+tar xzf satom-builder-offline-0.1.4-debian12-amd64.tar.gz
 cd satom-builder-installer
 sudo bash satom-builder-setup.sh
 ```
@@ -130,7 +131,7 @@ the extracted folder: it installs `tar` from the bundle before anything else.
 or let the guided installer verify and extract it:
 
 ```bash
-sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.3-rhel9-x86_64.tar.gz
+sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.4-rhel9-x86_64.tar.gz
 ```
 
 A bundle holds **one** family: `bundle/debs/` (Debian 12), `bundle/rpms/`
@@ -274,7 +275,7 @@ runner, which validates every request it reads.
 sudo satom-builder status                     services, version, health, runner, trust store
 sudo satom-builder update apply <package>     queue a signed update package and follow it
 sudo satom-builder update status [ID]         the newest (or given) update job
-sudo satom-builder update fetch --feed URL    download the newest package an HTTPS feed names
+sudo satom-builder update fetch [--feed URL]  download the newest package (default: the latest GitHub release)
 sudo satom-builder rollback [--restore-db]    undo the last applied update
 sudo satom-builder restart-all                restart the web service, reload nginx
 sudo satom-builder reinstall cli|runner       reinstall the root-owned copies

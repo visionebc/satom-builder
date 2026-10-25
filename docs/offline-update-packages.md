@@ -26,11 +26,14 @@ python3 deploy/sign_update_package.py sign dist/satom-builder-update-<version>.t
 ### 1.1 The upgrade feed
 
 A node can download the newest package itself, but only when an operator asks
-(an on-premise product does not phone home). There is no built-in address:
+(an on-premise product does not phone home). The built-in feed is the
+`satom-builder-update-latest.json` asset of the newest GitHub release:
 
 ```bash
+sudo satom-builder update fetch          # dry run: what would be downloaded
+sudo satom-builder update fetch --yes    # download it; then: satom-builder update apply <path>
+# an internal mirror instead:
 sudo satom-builder update fetch --feed https://downloads.example.com/satom-builder-update-latest.json
-sudo satom-builder update fetch --feed https://downloads.example.com/satom-builder-update-latest.json --yes
 ```
 
 The feed (schema `satom-builder.upgrade-feed/1`) is an address book: HTTPS only
@@ -38,7 +41,8 @@ The feed (schema `satom-builder.upgrade-feed/1`) is an address book: HTTPS only
 sha256 match the feed, and the package is then applied exactly like an
 uploaded one -- **the signature is still checked** by the runner. A forged feed
 can at most point at a package no trusted key signed, and that package is
-refused. `SATOM_BUILDER_UPGRADE_FEED` sets a default feed.
+refused. `SATOM_BUILDER_UPGRADE_FEED` replaces the built-in feed (a proxy
+that cannot reach github.com, or an internal mirror).
 
 ## 2. Why it is signed, and what that buys
 

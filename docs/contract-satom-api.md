@@ -1,6 +1,6 @@
 # Contract: SATOM ⇄ SATOM Builder (v1)
 
-This contract is binding for both repos (`visionebc/SATOM` and `visionebc/satom-builder`). A change to it changes both sides in the same round. Everything here is in English, like everything the product publishes.
+This contract is binding for both repos (SATOM and SATOM Builder). A change to it changes both sides in the same round. Everything here is in English, like everything the product publishes.
 
 Design background: `docs/2026-10-25-satom-builder-design.md`.
 

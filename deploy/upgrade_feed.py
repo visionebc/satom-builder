@@ -4,9 +4,9 @@ Vendored from SATOM ``deploy/upgrade_feed.py`` (see deploy/VENDORED.md).
 
 A feed is a small JSON document (schema ``satom-builder.upgrade-feed/1``) that
 names the newest ``satom-builder-update-<version>.tar.gz``, where it is hosted,
-its size and its sha256. There is NO built-in feed address: SATOM Builder has
-no public release mirror yet, so the operator names the feed with
-``--feed URL`` or ``SATOM_BUILDER_UPGRADE_FEED``.
+its size and its sha256. The built-in feed is the ``satom-builder-update-latest.json``
+asset of the newest GitHub release (``DEFAULT_FEED_URL``); ``--feed URL`` or
+``SATOM_BUILDER_UPGRADE_FEED`` name another one (an internal mirror).
 
 What this module is NOT: a reason to trust anything. The feed is an address
 book. The bytes it leads to are checked against the sha256 the feed declares
@@ -45,8 +45,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 FEED_SCHEMA = "satom-builder.upgrade-feed/1"
-#: No built-in feed: the operator names one (no public release mirror exists yet).
-DEFAULT_FEED_URL = ""
+#: The feed asset of the newest public release. GitHub answers this path with a
+#: redirect to the asset of whatever release is marked latest.
+DEFAULT_FEED_URL = ("https://github.com/visionebc/satom-builder/releases/latest/"
+                    "download/satom-builder-update-latest.json")
 #: A feed document is a few hundred bytes; anything bigger is not a feed.
 MAX_FEED_BYTES = 64 * 1024
 #: Same ceiling as an uploaded package (nginx client_max_body_size in the vhost).
@@ -66,8 +68,8 @@ class FeedError(Exception):
 
 
 def feed_url() -> str:
-    """The feed this node reads: ``SATOM_BUILDER_UPGRADE_FEED``. Empty when the
-    operator configured none (the CLI then asks for ``--feed URL``)."""
+    """The feed this node reads: ``SATOM_BUILDER_UPGRADE_FEED``, else the
+    built-in ``DEFAULT_FEED_URL``."""
     return (os.environ.get("SATOM_BUILDER_UPGRADE_FEED") or DEFAULT_FEED_URL).strip()
 
 

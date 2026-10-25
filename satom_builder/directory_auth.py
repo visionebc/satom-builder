@@ -1,6 +1,6 @@
 """Directory bind engines for external authentication.
 
-VENDORED from SATOM 4.0.1 ``app/services/directory_auth.py`` (visionebc/SATOM
+VENDORED from SATOM 4.0.1 ``app/services/directory_auth.py`` (SATOM
 commit 0b7a6193), with attribution. Changes against the original, all marked
 ``[builder]``:
 

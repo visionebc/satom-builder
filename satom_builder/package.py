@@ -1,7 +1,6 @@
 """``satom.plugin/1`` packages: build, sign, and read back (adopt).
 
-Byte-compatible with SATOM's ``app/services/plugin_package.write_package`` and
-with the generator in an internal generator (``satom_plugin.write_package``):
+Byte-compatible with SATOM's ``app/services/plugin_package.write_package``:
 
 * ``plugin.json`` = ``json.dumps(manifest, indent=1, sort_keys=True,
   ensure_ascii=False)`` with ``format`` and the ``files`` sha256 map;
