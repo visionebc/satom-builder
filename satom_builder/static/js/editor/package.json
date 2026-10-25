@@ -1,0 +1,1 @@
+{"type": "module", "private": true, "description": "ES modules of the SATOM Builder editor (served as static files; this file only tells node --test they are modules)."}

@@ -1,0 +1,140 @@
+{#- SATOM Builder editor. Context (satom_builder/views/editor.py, app-core):
+    project      dict, the GET /api/projects/<id> shape (contract section 11)
+    target       dict of the linked SATOM target, or None
+    csrf_token   str (base.html also carries <meta name="csrf-token">)
+  Everything dynamic is built by static/js/editor/main.js from #editor-boot;
+  this file only lays out the page and the tabs of the project kind. -#}
+{% extends "base.html" %}
+{% block title %}{{ project.get("name") or "Project" }} · Editor · SATOM Builder{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set kind = project.get("kind") %}
+{% if kind == "app" %}
+  {% set tabs = [("form", "Form", "bi-ui-checks"), ("diagram", "Diagram", "bi-diagram-3"), ("actions", "Actions", "bi-lightning"),
+                 ("stores", "Stores", "bi-database"), ("connections", "Connections", "bi-plug"), ("apis", "API Catalog", "bi-journal-code"),
+                 ("design", "Design", "bi-palette"), ("scripts", "Scripts", "bi-filetype-py"), ("raw", "Raw JSON", "bi-braces")] %}
+{% else %}
+  {% set tabs = [("files", "Files", "bi-file-earmark-code"), ("datasets", "Datasets", "bi-table"), ("params", "Params", "bi-sliders"),
+                 ("preview", "Preview", "bi-eye"), ("raw", "Raw JSON", "bi-braces")] %}
+{% endif %}
+<div class="ed-page" id="editor" data-kind="{{ kind }}" data-project-id="{{ project.get("id") }}">
+  <header class="ed-header fw-card" id="ed-header">
+    <div class="ed-header-row">
+      <div class="ed-header-id">
+        <h1 class="ed-title"><i class="bi {{ project.get('icon') or 'bi-puzzle' }}" aria-hidden="true"></i> <span id="ed-title">{{ project.get("name") or "" }}</span></h1>
+        <div class="ed-meta">
+          <span class="fw-badge fw-badge-primary" id="ed-kind">{{ kind }}</span>
+          <code id="ed-slug">{{ project.get("slug") or "" }}</code>
+          <span id="ed-version">{% if project.get("version") %}v{{ project.get("version") }}{% endif %}</span>
+          <span class="ed-target" id="ed-target">
+            {%- if target -%}
+              <i class="bi bi-hdd-network" aria-hidden="true"></i> Target: {{ target.get("name") or target.get("url") or target.get("id") }}{% if target.get("satom_version") %} (SATOM {{ target.get("satom_version") }}){% endif %}
+            {%- else -%}
+              <i class="bi bi-hdd-network" aria-hidden="true"></i> No target
+            {%- endif -%}
+          </span>
+          <span id="ed-check-badge" class="fw-badge fw-badge-secondary">Not checked</span>
+          <span id="ed-dirty" class="fw-badge fw-badge-warning" hidden>Unsaved changes</span>
+        </div>
+      </div>
+      <div class="ed-actions" role="toolbar" aria-label="Project actions">
+        <button type="button" class="btn btn-sm btn-fw-primary" id="btn-save" title="Save (Ctrl+S)"><i class="bi bi-save" aria-hidden="true"></i> Save</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-check" title="Check with the rules pack"><i class="bi bi-check2-square" aria-hidden="true"></i> Check</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-validate"><i class="bi bi-shield-check" aria-hidden="true"></i> Validate on SATOM</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-rehearse"><i class="bi bi-play-circle" aria-hidden="true"></i> Rehearse</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-import"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Import</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-download"><i class="bi bi-download" aria-hidden="true"></i> Download package</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-ai"><i class="bi bi-stars" aria-hidden="true"></i> AI</button>
+        <button type="button" class="btn btn-sm btn-fw-outline" id="btn-checks-toggle" aria-controls="ed-checks" aria-expanded="false"><i class="bi bi-list-check" aria-hidden="true"></i> Checks <span class="fw-badge fw-badge-danger" id="ed-checks-count"></span></button>
+      </div>
+    </div>
+    <details class="ed-details" id="ed-details">
+      <summary>Project details</summary>
+      <div class="ed-grid ed-grid-5">
+        <div class="ed-field"><label class="form-label ed-label" for="ed-name">Name</label><input class="form-control form-control-sm" id="ed-name" maxlength="200"></div>
+        <div class="ed-field"><label class="form-label ed-label" for="ed-slug-input">Slug</label><input class="form-control form-control-sm ed-mono" id="ed-slug-input" spellcheck="false" aria-describedby="ed-slug-help"><div class="form-text ed-help" id="ed-slug-help">lowercase letters, digits and -</div></div>
+        <div class="ed-field"><label class="form-label ed-label" for="ed-version-input">Version</label><input class="form-control form-control-sm ed-mono" id="ed-version-input" placeholder="1.0.0" aria-describedby="ed-version-help"><div class="form-text ed-help" id="ed-version-help">X.Y.Z</div></div>
+        <div class="ed-field"><label class="form-label ed-label" for="ed-icon">Icon</label><input class="form-control form-control-sm ed-mono" id="ed-icon" placeholder="bi-puzzle" aria-describedby="ed-icon-help"><div class="form-text ed-help" id="ed-icon-help">a Bootstrap icon class</div></div>
+        <div class="ed-field"><label class="form-label ed-label" for="ed-description">Description</label><input class="form-control form-control-sm" id="ed-description" maxlength="500"></div>
+      </div>
+    </details>
+    <div class="ed-status" id="ed-status" role="status" aria-live="polite"></div>
+    <div class="fw-alert fw-alert-info ed-banner" id="ed-draft-banner" role="region" aria-label="Local draft" hidden></div>
+    <div class="fw-alert fw-alert-warning ed-banner" id="ed-schema-banner" role="note" hidden></div>
+  </header>
+
+  <div class="ed-layout">
+    <main class="ed-main" id="ed-main">
+      <div class="ed-tabs" role="tablist" id="ed-tabs" aria-label="Editors">
+        {% for id, label, icon in tabs %}
+        <button type="button" role="tab" class="ed-tab" id="tab-{{ id }}" aria-controls="panel-{{ id }}" aria-selected="false" tabindex="-1"><i class="bi {{ icon }}" aria-hidden="true"></i> {{ label }}</button>
+        {% endfor %}
+      </div>
+      {% for id, label, icon in tabs %}
+      <section class="ed-panel" role="tabpanel" id="panel-{{ id }}" aria-labelledby="tab-{{ id }}" tabindex="0" hidden></section>
+      {% endfor %}
+      <noscript><div class="fw-alert fw-alert-warning">The editor needs JavaScript.</div></noscript>
+    </main>
+
+    <aside class="ed-checks fw-card" id="ed-checks" aria-labelledby="ed-checks-title">
+      <div class="fw-card-header ed-checks-head">
+        <h2 class="fw-card-title ed-card-title" id="ed-checks-title"><i class="bi bi-list-check" aria-hidden="true"></i> Checks</h2>
+        <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ed-checks-close" aria-label="Close the Checks panel"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+      </div>
+      <div class="fw-card-body" id="ed-checks-body"></div>
+    </aside>
+  </div>
+
+  <dialog class="ed-dialog" id="dlg-rehearse" aria-labelledby="rh-title">
+    <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="rh-title">Rehearse on SATOM</h2>
+      <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="rh-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+    <p class="ed-help">The saved draft runs on the target <strong>unarmed</strong>: steps that write are recorded, not executed. It uses the target's own stores, connections and secrets; nothing is kept.</p>
+    <div id="rh-form" class="ed-grid ed-grid-2"></div>
+    <div class="ed-inline">
+      <div class="ed-field"><label class="form-label ed-label" for="rh-answers">Answer "Ask a person" steps with</label>
+        <select class="form-select form-select-sm" id="rh-answers"><option value="yes">Yes</option><option value="no">No</option><option value="stop">Stop there (waiting)</option></select></div>
+      <button type="button" class="btn btn-sm btn-fw-primary" id="rh-run"><i class="bi bi-play-fill" aria-hidden="true"></i> Run the rehearsal</button>
+    </div>
+    <div id="rh-out" class="ed-dialog-out"></div>
+  </dialog>
+
+  <dialog class="ed-dialog" id="dlg-import" aria-labelledby="im-title">
+    <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="im-title">Import into SATOM</h2>
+      <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="im-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+    <div id="im-warn"></div>
+    <form id="im-form" autocomplete="off">
+      <div id="im-secrets"></div>
+      <div class="form-check ed-check"><input class="form-check-input" type="checkbox" id="im-downgrade"><label class="form-check-label" for="im-downgrade">Allow a downgrade (the target has a newer version)</label></div>
+      <button type="button" class="btn btn-sm btn-fw-primary" id="im-go"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Import</button>
+    </form>
+    <div id="im-out" class="ed-dialog-out"></div>
+  </dialog>
+
+  <dialog class="ed-dialog ed-dialog-wide" id="dlg-ai" aria-labelledby="ai-title">
+    <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="ai-title">Generate with AI</h2>
+      <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ai-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+    <p class="ed-help">The model gets the author guide, the target schema, the saved draft and your text. Never data rows, never secrets. Its draft is checked by the rules pack; problems left after the repair rounds are shown, never fixed silently.</p>
+    <div class="ed-grid ed-grid-3">
+      <div class="ed-field ed-span-2"><label class="form-label ed-label" for="ai-profile">AI profile</label><select class="form-select form-select-sm" id="ai-profile"><option value="">Loading…</option></select></div>
+      <div class="ed-field"><label class="form-label ed-label" for="ai-rounds">Repair rounds (at most)</label><input class="form-control form-control-sm" id="ai-rounds" type="number" min="1" max="10" value="3"></div>
+    </div>
+    <div class="ed-field"><label class="form-label ed-label" for="ai-prompt">What should it build or change?</label><textarea class="form-control form-control-sm" id="ai-prompt" rows="5"></textarea></div>
+    <div class="ed-inline">
+      <button type="button" class="btn btn-sm btn-fw-outline" id="ai-preview"><i class="bi bi-eye" aria-hidden="true"></i> What will be sent</button>
+      <button type="button" class="btn btn-sm btn-fw-primary" id="ai-generate"><i class="bi bi-stars" aria-hidden="true"></i> Generate</button>
+    </div>
+    <div class="ed-status" id="ai-status" role="status" aria-live="polite"></div>
+    <div id="ai-sent"></div>
+    <ol class="ed-rounds" id="ai-rounds-out" aria-label="Rounds"></ol>
+  </dialog>
+</div>
+<script type="application/json" id="editor-boot">{{ {"project": project, "target": target, "csrf_token": csrf_token} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/editor/main.js') }}"{% if csp_nonce is defined %} nonce="{{ csp_nonce }}"{% endif %}></script>
+{% endblock %}
