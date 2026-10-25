@@ -31,12 +31,14 @@ SCOPES = {
     ("GET", "/publishers"): "read",
     ("POST", "/publishers"): "admin",
     ("GET", "/library"): "read",
+    ("GET", "/data"): "read",
 }
 _LIB_PART = re.compile(r"^[0-9A-Za-z._-]{1,40}$")
 EXTRA = {
     ("POST", "/rehearse"): "the token's owner must be allowed to author in Plugin Studio",
     ("POST", "/import"): "the token's owner must be a SATOM super-admin",
     ("POST", "/publishers"): "the token's owner must be a SATOM super-admin",
+    ("GET", "/data"): "the token's owner must be allowed to author in Plugin Studio",
 }
 
 
@@ -134,7 +136,7 @@ class SatomClient:
         return redact(text, extra=[self._token])
 
     def _request(self, method: str, route: str, *, files=None, data=None, json_body=None,
-                 limit: int = MAX_JSON) -> Answer:
+                 limit: int = MAX_JSON, params: dict | None = None) -> Answer:
         if not self._token:
             raise SatomError("You have no SATOM token for this target yet: add one "
                              "under My tokens.", "no_token", 409)
@@ -142,7 +144,7 @@ class SatomClient:
         url = self.base_url + PREFIX + route
         try:
             with self._http.stream(method, url, headers=headers, files=files, data=data,
-                                   json=json_body) as r:
+                                   json=json_body, params=params) as r:
                 chunks, size = [], 0
                 for chunk in r.iter_bytes():
                     size += len(chunk)
@@ -282,6 +284,29 @@ class SatomClient:
         j = self._library_call(route)
         if not isinstance(j, dict):
             raise SatomError("SATOM's library answer is not an object.", "satom_bad_answer", 502)
+        return j
+
+    # -- contract section 15: this server's rows for the test data ---------
+    def data(self, datasets: list | None = None, stores: list | None = None,
+             limit: int = 200) -> dict:
+        """The rows SATOM shows the token's owner (``satom.builder-data/1``).
+        ``None`` = every dataset / store, ``[]`` = none."""
+        q = {"limit": str(max(1, min(int(limit or 200), 2000)))}
+        for name, v in (("datasets", datasets), ("stores", stores)):
+            if v is not None:
+                q[name] = ",".join(str(x) for x in v)
+        try:
+            j = self._json(self._request("GET", "/data", params=q))
+        except SatomError as exc:
+            # /builder/data itself never answers 404: a 404 is a SATOM without it
+            # (4.2.0 answers {"error": "Not found"} for an unknown route).
+            if exc.status == 404:
+                raise SatomError(f"{self.host} runs a SATOM that does not send its data to "
+                                 "the Builder yet: it needs SATOM 4.2.1 or later. Generate "
+                                 "test data instead.", "no_data_api", 409) from None
+            raise
+        if not isinstance(j, dict) or j.get("format") != "satom.builder-data/1":
+            raise SatomError("SATOM's data answer has an unknown format.", "satom_bad_answer", 502)
         return j
 
     def register_publisher(self, label: str, public_key_b64: str) -> dict:

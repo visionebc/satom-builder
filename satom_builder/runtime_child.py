@@ -20,7 +20,7 @@ rules. What runs is SATOM's code, verbatim from the pack:
   Script Library (a temporary library on disk, run by SATOM's own
   ``script_runner`` in SATOM's own jail);
 * ``script`` -- one script, the same way;
-* ``info``   -- the datasets and their columns.
+* ``info``   -- the datasets, their columns and the query SATOM fills them with.
 
 There is NO network in this process: before anything else runs, every
 AF_INET/AF_INET6 connect and name lookup raises. A replacement this file
@@ -80,7 +80,8 @@ def op_info(pack: str, req: dict) -> dict:
     from satom_rules.app.services import script_sdk as SDK
     from satom_rules.app.services import studio_satom as S
     return {"datasets": [{"key": k, "label": v[0], "description": v[1],
-                          "columns": PS.dataset_columns(k)} for k, v in PS.DATASETS.items()],
+                          "columns": PS.dataset_columns(k), "sql": v[2]}
+                         for k, v in PS.DATASETS.items()],
             "sources": [{"key": k, "label": lab} for k, lab in S.SOURCES],
             "sdk_doc": SDK.__doc__ or ""}
 

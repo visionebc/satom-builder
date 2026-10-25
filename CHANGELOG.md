@@ -3,6 +3,45 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+Test data starts from the target SATOM's own data, and the test data is a
+database with a diagram and SQL. Requested: "add the data we have in SATOM to
+the Builder so something already exists, and there must also be the
+database diagram and SQL so it can be queried and it is easier". **Load from
+SATOM needs SATOM 4.2.1 or later** on the target (`GET /api/v1/builder/data`,
+contract section 15); with an older SATOM the Builder generates test data as
+before and says why.
+
+### Added
+
+- **Load from SATOM** (Test data tab): the rows the target SATOM shows you,
+  read with your token: its datasets, the data stores the project uses and
+  the lists of SATOM objects, at most *SATOM rows per table* (200 by
+  default, up to 2,000). Scoped and masked by SATOM as a view rendered there
+  would be (your ADOM, maintenance devices only with the permission, the
+  audit log only with the audit permission). The rows stay on the Builder:
+  never in a package, never sent to the AI. Connections and step answers are
+  kept.
+- **A new project starts from its SATOM's data** the first time its Test
+  data, Database or Test run tab opens (generated rows when the target
+  cannot send them), and the tab says which.
+- **Where every table came from**: *from SATOM* (target, time, *first rows
+  of N* when cut), *generated (seed N)*, *package seed rows*, *edited*.
+- **Views see every dataset** in their test data, the ones they read first,
+  the rest under *Other SATOM datasets*, so an author can look before
+  picking.
+- **Database tab**: the test data as tables (a dataset by its key, a data
+  store as `store_<slug>`) in a diagram with their columns, types and the
+  relations between them (`appliance_id`, `device`, `server_pool`, `wpp`);
+  click a table for its columns, its origin and, for a dataset, the query
+  SATOM fills it with. A **SQL console** runs one read-only SQLite SELECT
+  over the saved test data (500 rows, 3 s; writes, ATTACH, PRAGMA and file
+  functions refused), with example queries per table and per relation.
+- **The Assistant knows the test database**: table names, column types, row
+  counts and relations go into its request (never a row), and it answers
+  questions about the data with a query to run in the Database tab.
+
 ## [0.2.0] - 2026-10-25
 
 Everything a plugin author needs to build AND test, with SATOM's own code, on

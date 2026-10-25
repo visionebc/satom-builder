@@ -68,6 +68,9 @@ export class Api {
   testdata(id) { return this.req("GET", `/api/projects/${id}/testdata`); }
   saveTestdata(id, data) { return this.req("PUT", `/api/projects/${id}/testdata`, { data }); }
   generateTestdata(id, opts) { return this.req("POST", `/api/projects/${id}/testdata/generate`, opts || {}); }
+  importTestdata(id, opts) { return this.req("POST", `/api/projects/${id}/testdata/import`, opts || {}); }
+  testdataSchema(id) { return this.req("GET", `/api/projects/${id}/testdata/schema`); }
+  testdataSql(id, sql) { return this.req("POST", `/api/projects/${id}/testdata/sql`, { sql }); }
   testRun(id, body) { return this.req("POST", `/api/projects/${id}/test-runs`, body); }
   testRuns(id) { return this.req("GET", `/api/projects/${id}/test-runs`); }
   testRunGet(runId) { return this.req("GET", `/api/test-runs/${encodeURIComponent(runId)}`); }

@@ -154,7 +154,7 @@ def conversation_text(history: list, new_text: str, text_files: list) -> str:
 # --------------------------------------------------------------------------
 def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, adapter,
                 pack, snap: dict, project: dict, assets: list, max_rounds: int,
-                profile_label: str) -> dict:
+                profile_label: str, test_schema: str = "") -> dict:
     """Store the author's message and a running reply, then write the reply
     in a thread. -> {"user": id, "reply": id}."""
     with db.session(app.config["DB_PATH"]) as conn:
@@ -177,6 +177,10 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
                      (t, title or text.strip().splitlines()[0][:80], chat_id))
     author_text = conversation_text([dict(h) for h in history], text,
                                     [dict(f) for f in files if f["kind"] == "text"])
+    if test_schema:
+        author_text += ("\n## The project's test database\n\n" + test_schema + "\n\nThe "
+                        "author runs read-only SQLite SELECTs over it in the Database tab: "
+                        "when asked about the data, answer with a query they can run.\n")
     images = [{"mime": f["mime"], "data": bytes(f["data"])} for f in files if f["kind"] == "image"]
 
     def work():

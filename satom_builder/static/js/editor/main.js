@@ -20,9 +20,10 @@ import rawTab from "./tabs/raw.js";
 import { files as filesTab, datasets as datasetsTab, params as paramsTab, preview as previewTab } from "./tabs/view.js";
 import testdataTab from "./tabs/testdata.js";
 import testrunTab from "./tabs/testrun.js";
+import databaseTab from "./tabs/database.js";
 import chatTab from "./tabs/chat.js";
 
-const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, testrun: testrunTab, chat: chatTab };
+const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, database: databaseTab, testrun: testrunTab, chat: chatTab };
 const $ = (id) => document.getElementById(id);
 const DRAFT_DELAY = 400;
 

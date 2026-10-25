@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, current_app, g, make_response, request
 
-from .. import ai_loop, chat, db, projects, targets
+from .. import ai_loop, chat, db, projects, runtime, targets, testdata
 from ..profiles import adapter_for
 from ..profiles import get as get_profile
 from ..security import api_error, audit, login_required
@@ -180,6 +180,19 @@ def chat_file_get(cid, fid):
     return resp
 
 
+def _test_schema(conn, row, pack, snap) -> str:
+    """The project's test database for the prompt: names, types, counts and
+    relations, never a row ("" when the target has no test runtime)."""
+    try:
+        runtime.check_pack(pack)
+        info = runtime.info(pack).get("datasets") or []
+    except runtime.RuntimeUnavailable:
+        return ""
+    data, _ = runtime.load_testdata(conn, row["id"])
+    tables = testdata.sql_tables(data, info, testdata.store_defs(projects.to_api(conn, row), snap))
+    return testdata.schema_text(testdata.schema(tables, data.get("origin"))) if tables else ""
+
+
 @bp.post("/chats/<int:cid>/messages")
 @login_required
 def chat_send(cid):
@@ -238,7 +251,8 @@ def chat_send(cid):
                                project=projects.to_api(conn, row),
                                assets=projects.asset_blobs(conn, row["id"]),
                                max_rounds=max_rounds,
-                               profile_label=f"{prof['name']} ({prof['model']})")
+                               profile_label=f"{prof['name']} ({prof['model']})",
+                               test_schema=_test_schema(conn, row, pack, snap))
     audit("chat.message", row["slug"], chat=cid, profile=prof["name"], files=len(ids))
     return ids_msg, 202
 

@@ -10,7 +10,10 @@ One JSON document per project (table ``test_data``)::
                                 "default": {"status", "body"},
                                 "queries": [{"match", "rows"}]}},
      "steps":       {"<step key>": {"outcome", "value", "detail"}},
-     "sources":     {"<satom_select source>": [{"value", "label"}]}}
+     "sources":     {"<satom_select source>": [{"value", "label"}]},
+     "origin":      {"datasets:<key>" | "stores:<slug>" | "sources":
+                     {"source": "satom"|"generated"|"package", "at", "target",
+                      "total", "truncated", "edited"}}}
 
 * **datasets** have SATOM's columns (``plugin_sandbox.dataset_columns`` from
   the rules pack): a view tested here reads the same keys it reads there.
@@ -24,16 +27,29 @@ One JSON document per project (table ``test_data``)::
 * **steps** decide what a step that would touch SATOM itself or a device
   (checks, DDI, certificates, FortiWeb) answers in a test run.
 
+Test data starts from the target's own data when its SATOM sends it
+(contract section 15, :func:`from_satom`): the rows a view rendered there
+shows the author, the data stores' rows and the ``satom_select`` lists, scoped
+to the author's token. ``origin`` says where each table came from. Those rows
+stay on this server: they are never written to a package, a repository or
+a prompt (the assistant gets :func:`schema_text`, names and counts only).
+
 Generated values are synthetic and deterministic for a seed: names like
 ``fwb-lab-01``, addresses in the documentation ranges (192.0.2.0/24,
-198.51.100.0/24, 203.0.113.0/24), ``example.com`` hosts. Never a value of a
-real installation: SATOM sends structure, not rows.
+198.51.100.0/24, 203.0.113.0/24), ``example.com`` hosts.
+
+The test data is also a database: :func:`sql_tables` lays it out as tables
+(a dataset = its key, a store = ``store_<slug>``), :func:`schema` adds the
+relations a diagram draws, and :func:`run_sql` answers a read-only SQLite
+SELECT over it.
 """
 from __future__ import annotations
 
 import json
 import random
 import re
+import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 
 FORMAT = "satom-builder.testdata/1"
@@ -42,6 +58,8 @@ MAX_ROWS = 2000
 MAX_RESPONSES = 200
 DEFAULT_ROWS = 8
 _KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
+_ORIGIN_KEY_RE = re.compile(r"^(sources|(datasets|stores):[A-Za-z0-9_.:-]{1,120})$")
+ORIGINS = ("satom", "generated", "package")
 
 KINDS = ("fortiweb", "fortigate", "fortiadc", "fortianalyzer", "fortiauthenticator")
 _PREFIX = {"fortiweb": "fwb", "fortigate": "fgt", "fortiadc": "adc",
@@ -60,7 +78,7 @@ class TestDataError(ValueError):
 
 def empty() -> dict:
     return {"format": FORMAT, "datasets": {}, "stores": {}, "connections": {},
-            "steps": {}, "sources": {}}
+            "steps": {}, "sources": {}, "origin": {}}
 
 
 # --------------------------------------------------------------------------
@@ -282,19 +300,18 @@ def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
     def pick(kind, key):
         return not want or f"{kind}:{key}" in want
 
-    # A view reads the datasets it declares. An app reads none: only the fleet,
-    # which answers "Load an appliance" and the satom_select sources.
-    keys = used_datasets(project) if project.get("kind") in ("view", "widget") \
-        else ["fleet_appliances"]
-    for key in keys:
+    for key in dataset_keys(project, dataset_columns):
         cols = dataset_columns.get(key)
         if cols and pick("datasets", key):
             out["datasets"][key] = {"rows": dataset_rows(key, cols, gen, rows)}
+            out["origin"][f"datasets:{key}"] = {"source": "generated", "seed": int(seed or 1)}
     for slug, d in store_defs(project, snapshot).items():
         if not pick("stores", slug):
             continue
         seed_rows = [r for r in d["seed"] if isinstance(r, dict)]
         out["stores"][slug] = {"rows": seed_rows or store_rows(d["columns"], gen, rows)}
+        out["origin"][f"stores:{slug}"] = {"source": "package" if seed_rows else "generated",
+                                           "seed": int(seed or 1)}
     for slug, c in connection_defs(project, snapshot).items():
         if pick("connections", slug) and (want or slug not in out["connections"]):
             out["connections"][slug] = connection_template(project, c)
@@ -305,7 +322,74 @@ def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
             "fortiweb": [{"value": str(d["id"]), "label": d["name"]} for d in fleet
                          if d["kind"] == "fortiweb"],
         }
+        out["origin"]["sources"] = {"source": "generated", "seed": int(seed or 1)}
     return out
+
+
+def dataset_keys(project: dict, known) -> list[str]:
+    """The datasets a project's test data holds. A view or a widget: every
+    dataset (the ones it reads first), so its author can look at all of them
+    before picking. An app reads none: only the fleet, which answers "Load an
+    appliance" and the satom_select sources."""
+    if project.get("kind") not in ("view", "widget"):
+        return ["fleet_appliances"]
+    used = [k for k in used_datasets(project) if k in known]
+    return used + [k for k in known if k not in used]
+
+
+# --------------------------------------------------------------------------
+# from the target's SATOM (contract section 15)
+# --------------------------------------------------------------------------
+def from_satom(current: dict | None, answer: dict, project: dict, snapshot: dict | None,
+               target: str) -> dict:
+    """*current* with the tables SATOM sent replaced by SATOM's rows.
+
+    Datasets as :func:`dataset_keys` picks them; the data stores the project
+    uses that exist on the target (a package-only store keeps its rows); the
+    ``satom_select`` lists. Connections and step answers are not SATOM's data
+    and stay. A document over :data:`MAX_BYTES` loses rows from its largest
+    table first, and says so (``truncated``)."""
+    out = clean(current) if current else empty()
+    at = str(answer.get("taken_at") or "")[:40]
+    target = str(target or "")[:120]
+    sent = answer.get("datasets") or {}
+    for key in dataset_keys(project, list(sent)):
+        d = sent.get(key)
+        if not isinstance(d, dict):
+            continue
+        rows = [r for r in d.get("rows") or [] if isinstance(r, dict)][:MAX_ROWS]
+        out["datasets"][key] = {"rows": rows}
+        out["origin"][f"datasets:{key}"] = {
+            "source": "satom", "at": at, "target": target,
+            "total": int(d.get("total") or len(rows)), "truncated": bool(d.get("truncated"))}
+    stores = answer.get("stores") or {}
+    for slug in store_defs(project, snapshot):
+        d = stores.get(slug)
+        if not isinstance(d, dict):
+            continue
+        rows = [r for r in d.get("rows") or [] if isinstance(r, dict)][:MAX_ROWS]
+        out["stores"][slug] = {"rows": rows}
+        out["origin"][f"stores:{slug}"] = {
+            "source": "satom", "at": at, "target": target,
+            "total": int(d.get("total") or len(rows)), "truncated": bool(d.get("truncated"))}
+    src = answer.get("sources")
+    if isinstance(src, dict) and src:
+        out["sources"] = {str(k)[:60]: [o for o in v if isinstance(o, dict)][:500]
+                          for k, v in src.items() if isinstance(v, list)}
+        out["origin"]["sources"] = {"source": "satom", "at": at, "target": target}
+    while _size(out) > MAX_BYTES:
+        part, key = max(((p, k) for p in ("datasets", "stores") for k in out[p]),
+                        key=lambda pk: len(out[pk[0]][pk[1]]["rows"]), default=(None, None))
+        if part is None or not out[part][key]["rows"]:
+            break
+        rows = out[part][key]["rows"]
+        del rows[len(rows) // 2 or 1:]
+        out["origin"].setdefault(f"{part}:{key}", {})["truncated"] = True
+    return clean(out)
+
+
+def _size(doc) -> int:
+    return len(json.dumps(doc, ensure_ascii=False, default=str).encode("utf-8"))
 
 
 # --------------------------------------------------------------------------
@@ -398,6 +482,22 @@ def clean(data) -> dict:
         out["sources"][str(k)[:60]] = [{"value": str(o.get("value", "")),
                                         "label": str(o.get("label", o.get("value", "")))}
                                        for o in v[:500] if isinstance(o, dict)]
+    sec = data.get("origin", {})
+    sec = sec if isinstance(sec, dict) else {}
+    for k, v in list(sec.items())[:500]:
+        if not isinstance(v, dict) or not _ORIGIN_KEY_RE.match(str(k)):
+            continue
+        o = {"source": v.get("source") if v.get("source") in ORIGINS else "edited"}
+        for f in ("at", "target"):
+            if v.get(f):
+                o[f] = str(v[f])[:120]
+        for f in ("total", "seed"):
+            if isinstance(v.get(f), int) and not isinstance(v.get(f), bool):
+                o[f] = v[f]
+        for f in ("truncated", "edited"):
+            if v.get(f):
+                o[f] = True
+        out["origin"][str(k)] = o
     return out
 
 
@@ -429,3 +529,181 @@ def sql_answer(conn: dict, sql: str) -> list:
         if q.get("match") and q["match"].lower() in low:
             return list(q.get("rows") or [])
     return []
+
+
+# --------------------------------------------------------------------------
+# the test data as a database: tables, relations, read-only SQL
+# --------------------------------------------------------------------------
+SQL_MAX_ROWS = 500
+SQL_MAX_CHARS = 20000
+SQL_SECONDS = 3.0
+SQL_MAX_VALUE = 10 * 1024 * 1024
+#: Known references between SATOM's datasets: (column, table, key column).
+REFS = (("appliance_id", "fleet_appliances", "id"), ("device", "fleet_appliances", "name"),
+        ("server_pool", "server_pools", "name"), ("wpp", "web_protection_profiles", "name"))
+_SQL_TYPE = {"number": "NUMERIC", "boolean": "INTEGER", "date": "TEXT", "json": "TEXT",
+             "text": "TEXT"}
+_DENY_FUNCTIONS = {"zeroblob", "randomblob", "load_extension", "readfile", "writefile",
+                   "edit", "fts3_tokenizer"}
+_ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ,
+                    getattr(sqlite3, "SQLITE_FUNCTION", 31), getattr(sqlite3, "SQLITE_RECURSIVE", 33)}
+
+
+def store_table(slug: str) -> str:
+    return "store_" + re.sub(r"[^A-Za-z0-9_]", "_", slug)
+
+
+def _infer(rows: list, col: str) -> str:
+    for r in rows:
+        v = r.get(col)
+        if v is None or v == "":
+            continue
+        if isinstance(v, bool):
+            return "boolean"
+        if isinstance(v, (int, float)):
+            return "number"
+        if isinstance(v, (dict, list)):
+            return "json"
+        return "text"
+    return "text"
+
+
+def sql_tables(data: dict, datasets: list[dict], stores: dict) -> list[dict]:
+    """``[{name, kind, key, label, columns: [{name, type}], rows, sql}]``.
+    *datasets* is the runtime's ``info`` list (key, label, columns, sql),
+    *stores* ``{slug: {"columns": [...]}}``."""
+    data = data or empty()
+    info = {d["key"]: d for d in datasets or []}
+    out = []
+    for key, d in (data.get("datasets") or {}).items():
+        rows = d.get("rows") or []
+        known = list((info.get(key) or {}).get("columns") or [])
+        names = known + [c for c in dict.fromkeys(k for r in rows for k in r) if c not in known]
+        out.append({"name": key, "kind": "dataset", "key": key,
+                    "label": (info.get(key) or {}).get("label") or key,
+                    "sql": (info.get(key) or {}).get("sql") or "",
+                    "columns": [{"name": c, "type": _infer(rows, c)} for c in names],
+                    "rows": rows})
+    used = {t["name"] for t in out}
+    for slug, d in (data.get("stores") or {}).items():
+        # a row without _id gets the one a test run gives it (its position)
+        rows = [dict(r, _id=r.get("_id") or i + 1) for i, r in enumerate(d.get("rows") or [])]
+        decl = [c for c in ((stores or {}).get(slug) or {}).get("columns") or []
+                if isinstance(c, dict) and c.get("name")]
+        names = ["_id"] + [c["name"] for c in decl]
+        extra = [c for c in dict.fromkeys(k for r in rows for k in r)
+                 if c not in names and not str(c).startswith("_")]
+        types = {c["name"]: str(c.get("type") or "text") for c in decl}
+        name = store_table(slug)
+        while name in used:
+            name += "_"
+        used.add(name)
+        out.append({"name": name, "kind": "store", "key": slug, "label": slug, "sql": "",
+                    "columns": [{"name": "_id", "type": "number"}]
+                    + [{"name": c, "type": types.get(c) or _infer(rows, c)} for c in names[1:] + extra],
+                    "rows": rows})
+    return out
+
+
+def schema(tables: list[dict], origin: dict | None = None) -> dict:
+    """What the database diagram draws: tables (no rows) and relations."""
+    by_name = {t["name"]: t for t in tables}
+    rels = []
+    for t in tables:
+        cols = {c["name"] for c in t["columns"]}
+        for col, ref, key in REFS:
+            if col in cols and ref in by_name and ref != t["name"] and \
+                    key in {c["name"] for c in by_name[ref]["columns"]}:
+                rels.append({"from": t["name"], "column": col, "to": ref, "to_column": key})
+    origin = origin or {}
+    return {"tables": [{"name": t["name"], "kind": t["kind"], "key": t["key"], "label": t["label"],
+                        "sql": t["sql"], "columns": t["columns"], "rows": len(t["rows"]),
+                        "origin": origin.get(("datasets:" if t["kind"] == "dataset" else "stores:")
+                                             + t["key"]) or {}}
+                       for t in tables],
+            "relations": rels}
+
+
+def schema_text(sch: dict) -> str:
+    """The schema for a prompt: names, types, counts and relations, never a row."""
+    lines = ["Tables of the test database (SQLite; a dataset is named by its key, a data "
+             "store store_<slug>; the rows stay in the Builder):"]
+    for t in sch.get("tables") or []:
+        src = (t.get("origin") or {}).get("source") or "edited"
+        cols = ", ".join(f"{c['name']} {c['type']}" for c in t["columns"])
+        lines.append(f"- {t['name']} ({t['kind']} {t['key']}, {t['rows']} rows, {src}): {cols}")
+    for r in sch.get("relations") or []:
+        lines.append(f"- {r['from']}.{r['column']} -> {r['to']}.{r['to_column']}")
+    return "\n".join(lines)
+
+
+def _qi(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _cell(v):
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, ensure_ascii=False)
+    if v is None or isinstance(v, (int, float, str)):
+        return v
+    return str(v)
+
+
+def _authorizer(action, arg1, arg2, _db, _trigger):
+    if action not in _ALLOWED_ACTIONS:
+        return sqlite3.SQLITE_DENY
+    if action == getattr(sqlite3, "SQLITE_FUNCTION", 31) and str(arg2 or "").lower() in _DENY_FUNCTIONS:
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
+
+
+def run_sql(tables: list[dict], sql: str, *, max_rows: int = SQL_MAX_ROWS,
+            seconds: float = SQL_SECONDS) -> dict:
+    """One read-only SELECT over the test data, in a private in-memory SQLite:
+    ``{"columns", "rows", "truncated", "ms"}``. Only reading is authorised (no
+    write, no ATTACH, no PRAGMA, no file function), it stops after *seconds*,
+    and a value is at most 10 MB. Raises :class:`TestDataError` with SQLite's
+    message."""
+    sql = (sql or "").strip()
+    while sql.endswith(";"):
+        sql = sql[:-1].rstrip()
+    if not sql:
+        raise TestDataError("Write a SELECT.")
+    if len(sql) > SQL_MAX_CHARS:
+        raise TestDataError(f"The query is longer than {SQL_MAX_CHARS} characters.")
+    con = sqlite3.connect(":memory:")
+    t0 = time.monotonic()
+    try:
+        for t in tables:
+            cols = [c["name"] for c in t["columns"]]
+            if not cols:
+                continue
+            con.execute("CREATE TABLE %s (%s)" % (_qi(t["name"]), ", ".join(
+                "%s %s" % (_qi(c["name"]), _SQL_TYPE.get(c["type"], "")) for c in t["columns"])))
+            con.executemany("INSERT INTO %s VALUES (%s)" % (_qi(t["name"]), ",".join("?" * len(cols))),
+                            [[_cell(r.get(c)) for c in cols] for r in t["rows"]])
+        if hasattr(con, "setlimit"):
+            con.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, SQL_MAX_VALUE)
+            con.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+        con.set_authorizer(_authorizer)
+        deadline = time.monotonic() + seconds
+        con.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 2000)
+        try:
+            cur = con.execute(sql)
+            columns = [d[0] for d in cur.description or []]
+            fetched = cur.fetchmany(max_rows + 1)
+        except sqlite3.OperationalError as exc:
+            if str(exc) == "interrupted":
+                raise TestDataError(f"The query ran longer than {seconds:g} s: stopped.") from None
+            raise TestDataError(f"SQL: {exc}") from None
+        except (sqlite3.Error, sqlite3.Warning, ValueError, OverflowError) as exc:
+            raise TestDataError(f"SQL: {exc}") from None
+        if not columns:
+            raise TestDataError("Only a SELECT answers rows here.")
+    finally:
+        con.close()
+    rows = [[v.hex() if isinstance(v, bytes) else v for v in r] for r in fetched[:max_rows]]
+    return {"columns": columns, "rows": rows, "truncated": len(fetched) > max_rows,
+            "ms": int((time.monotonic() - t0) * 1000)}

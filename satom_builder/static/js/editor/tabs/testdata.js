@@ -1,22 +1,60 @@
 /* Test data tab: what SATOM's runtime reads in a test run instead of a
- * database (satom_builder/testdata.py). Datasets have SATOM's columns,
- * stores start from the package's seed rows, connections answer canned
- * responses, and the steps that would touch SATOM itself or a device answer
- * what is set here. Saved separately from the project (PUT .../testdata). */
+ * database (satom_builder/testdata.py). It starts from the target SATOM's
+ * own rows (Load from SATOM, contract section 15; done once by itself for a
+ * project with no test data yet), or from generated rows. Datasets have
+ * SATOM's columns, stores start from SATOM's rows or the package's seed
+ * rows, connections answer canned responses, and the steps that would touch
+ * SATOM itself or a device answer what is set here. Every table says where
+ * it came from (origin). Saved separately from the project (PUT .../testdata). */
 import { h, clear, field, input, textarea, select, button, iconButton, badge, card, empty, say } from "../ui.js";
 import { parseCSV } from "../csv.js";
 
 const PAGE = 25;
-export const S = { pid: null, info: null, data: null, dirty: false, loading: null, page: {}, asJson: {}, seed: 1, rows: 8 };
+export const S = { pid: null, info: null, data: null, dirty: false, loading: null, page: {}, asJson: {}, seed: 1, rows: 8, limit: 200, note: null, version: 0 };
+
+/* A project with no test data yet starts from its target's data: SATOM's
+ * rows when the target sends them, generated rows when it cannot (older
+ * SATOM, no token, unreachable). Said once, on the tab (S.note). */
+async function firstFill(ctx, j) {
+  if (j.updated_at !== null && j.updated_at !== undefined) return j;
+  if (!j.runtime || !j.runtime.ok) return j;
+  try {
+    const r = await ctx.api.importTestdata(ctx.project.id, { limit: S.limit });
+    S.note = { tone: "ok", text: "This project had no test data: it starts from the data of its SATOM target, as that SATOM shows it to you. Edit it, or generate synthetic rows instead." };
+    return r;
+  } catch (e) {
+    try {
+      const r = await ctx.api.generateTestdata(ctx.project.id, { seed: S.seed, rows: S.rows });
+      S.note = { tone: "info", text: "SATOM did not send its data (" + e.message + "): this project starts from generated test data." };
+      return r;
+    } catch (e2) { return j; }
+  }
+}
 
 export async function ensureInfo(ctx, force) {
-  if (S.pid !== ctx.project.id) { S.pid = ctx.project.id; S.info = null; S.data = null; S.dirty = false; }
+  if (S.pid !== ctx.project.id) { S.pid = ctx.project.id; S.info = null; S.data = null; S.dirty = false; S.note = null; }
   if (S.info && !force) return S.info;
   if (!S.loading) {
-    S.loading = ctx.api.testdata(ctx.project.id).then((j) => { S.info = j; S.data = j.data; S.dirty = false; return j; })
+    S.loading = ctx.api.testdata(ctx.project.id).then((j) => firstFill(ctx, j))
+      .then((j) => { S.info = j; S.data = j.data; S.dirty = false; S.version += 1; return j; })
       .finally(() => { S.loading = null; });
   }
   return S.loading;
+}
+
+/* Where a table came from, as a badge: SATOM (target, when, cut), generated, package. */
+export function originBadge(o) {
+  if (!o || !o.source) return badge("edited", "secondary");
+  let text, tone = "secondary";
+  if (o.source === "satom") {
+    text = "from SATOM" + (o.target ? " " + o.target : "") + (o.at ? " · " + String(o.at).slice(0, 16).replace("T", " ") : "");
+    if (o.truncated) text += o.total ? ` · first rows of ${o.total}` : " · cut";
+    tone = "info";
+  } else if (o.source === "package") text = "package seed rows";
+  else if (o.source === "generated") text = "generated" + (o.seed ? ` (seed ${o.seed})` : "");
+  else text = "edited";
+  if (o.edited && o.source !== "edited") text += " · edited";
+  return badge(text, tone);
 }
 
 function typeOf(rows, col) {
@@ -51,7 +89,11 @@ function tableEditor(ctx, rerender, key, title, columns, rows, opts) {
   const cols = columns.length ? columns : Array.from(new Set(rows.flatMap((r) => Object.keys(r)))).filter((c) => !c.startsWith("_"));
   const types = {};
   cols.forEach((c) => { types[c] = o.types && o.types[c] ? o.types[c] : typeOf(rows, c); });
-  const changed = () => { S.dirty = true; ctx.say("Test data changed: Save test data to keep it.", "info"); markDirty(); };
+  const changed = () => {
+    S.dirty = true;
+    if (o.origin) { S.data.origin = S.data.origin || {}; S.data.origin[o.origin] = Object.assign({}, S.data.origin[o.origin] || {}, { edited: true }); }
+    ctx.say("Test data changed: Save test data to keep it.", "info"); markDirty();
+  };
   const tools = [];
   const add = button("Add row", { class: "btn btn-sm btn-fw-outline", id: `td-add-${key}` }, "bi-plus-lg");
   add.addEventListener("click", () => { const r = {}; cols.forEach((c) => { r[c] = types[c] === "number" ? 0 : types[c] === "boolean" ? false : ""; }); rows.push(r); S.page[key] = Math.floor((rows.length - 1) / PAGE); changed(); rerender(); });
@@ -129,7 +171,7 @@ function tableEditor(ctx, rerender, key, title, columns, rows, opts) {
     body = [rows.length ? h("div", { class: "ed-scroll-x" }, h("table", { class: "fw-table ed-table" },
       h("thead", null, h("tr", null, cols.map((c) => h("th", { scope: "col" }, c, h("small", { class: "text-muted", text: " " + types[c] }))), h("th", { scope: "col" }, h("span", { class: "visually-hidden", text: "Remove" })))), tb)) : empty("No rows."), pager];
   }
-  return card(h("span", null, title, " ", badge(`${rows.length} row(s)`, "secondary"), o.note ? h("small", { class: "text-muted", text: " " + o.note }) : null),
+  return card(h("span", null, title, " ", badge(`${rows.length} row(s)`, "secondary"), o.origin ? [" ", originBadge((S.data.origin || {})[o.origin])] : null, o.note ? h("small", { class: "text-muted", text: " " + o.note }) : null),
     [o.help ? h("p", { class: "ed-help", text: o.help }) : null, body], { icon: o.icon || "bi-table", id: `td-card-${key}`, tools: h("span", { class: "ed-row-tools" }, tools) });
 }
 
@@ -215,6 +257,20 @@ function stepsEditor(ctx, rerender) {
     h("div", { class: "ed-scroll-x" }, h("table", { class: "fw-table ed-table" }, h("thead", null, h("tr", null, ["Step", "Kind", "Answer", "Value (JSON)", "Detail"].map((x) => h("th", { scope: "col", text: x })))), tb))], { icon: "bi-hdd-network", id: "td-card-steps" });
 }
 
+async function fromSatom(ctx, rerender) {
+  const st = document.getElementById("td-status");
+  if (S.dirty && !window.confirm("Replace the unsaved test data with SATOM's data?")) return;
+  say(st, "Reading the data of the SATOM target…", "busy");
+  try {
+    const j = await ctx.api.importTestdata(ctx.project.id, { limit: S.limit });
+    S.info = j; S.data = j.data; S.dirty = false; S.note = null; S.version += 1;
+    rerender();
+    const n = Object.values(j.data.datasets || {}).reduce((a, d) => a + (d.rows || []).length, 0)
+      + Object.values(j.data.stores || {}).reduce((a, d) => a + (d.rows || []).length, 0);
+    say(document.getElementById("td-status"), `${n} row(s) from SATOM, saved. Connections and step answers are unchanged.`, "ok");
+  } catch (e) { say(st, e.message, "bad"); }
+}
+
 async function generate(ctx, rerender, only) {
   const st = document.getElementById("td-status");
   if (S.dirty && !only && !window.confirm("Replace the unsaved test data with generated data?")) return;
@@ -222,8 +278,8 @@ async function generate(ctx, rerender, only) {
   try {
     const j = await ctx.api.generateTestdata(ctx.project.id, { seed: S.seed, rows: S.rows, only: only || null });
     const keep = only && S.dirty ? S.data : null;
-    S.info = j;
-    if (keep) { only.forEach((o) => { const [part, k] = o.split(":"); keep[part][k] = j.data[part][k]; }); S.data = keep; } else { S.data = j.data; S.dirty = false; }
+    S.info = j; S.version += 1;
+    if (keep) { only.forEach((o) => { const [part, k] = o.split(":"); keep[part][k] = j.data[part][k]; keep.origin = keep.origin || {}; if ((j.data.origin || {})[o]) keep.origin[o] = j.data.origin[o]; }); S.data = keep; } else { S.data = j.data; S.dirty = false; }
     rerender();
     say(document.getElementById("td-status"), only ? "Regenerated." : "Generated and saved.", "ok");
   } catch (e) { say(st, e.message, "bad"); }
@@ -250,26 +306,36 @@ export default {
     rows.addEventListener("change", () => { S.rows = Math.max(1, Math.min(200, Number(rows.value) || 8)); });
     const gen = button("Generate all", { class: "btn btn-sm btn-fw-outline", id: "td-generate", disabled: !info.runtime.ok }, "bi-magic");
     gen.addEventListener("click", () => generate(ctx, rerender, null));
+    const limit = input(S.limit, { type: "number", min: 1, max: 2000, id: "td-limit" });
+    limit.addEventListener("change", () => { S.limit = Math.max(1, Math.min(2000, Number(limit.value) || 200)); });
+    const imp = button("Load from SATOM", { class: "btn btn-sm btn-fw-primary", id: "td-import", disabled: !info.runtime.ok }, "bi-cloud-download");
+    imp.addEventListener("click", () => fromSatom(ctx, rerender));
     const save = button("Save test data", { class: "btn btn-sm btn-fw-primary" + (S.dirty ? " ed-attention" : ""), id: "td-save" }, "bi-save");
     save.addEventListener("click", async () => {
       const st = document.getElementById("td-status");
       say(st, "Saving…", "busy");
       try { const j = await ctx.api.saveTestdata(ctx.project.id, S.data); S.data = j.data; S.dirty = false; markDirty(); say(st, "Test data saved.", "ok"); ctx.say("Test data saved.", "ok"); } catch (e) { say(st, "Not saved: " + e.message, "bad"); }
     });
+    if (S.note) panel.appendChild(h("div", { class: "fw-alert fw-alert-" + (S.note.tone === "ok" ? "success" : "info"), role: "note", id: "td-first-fill", text: S.note.text }));
     panel.appendChild(card("Test data", [
-      h("p", { class: "ed-help", text: "What a test run reads instead of SATOM's database. Datasets have the columns SATOM gives a view; stores start from your package's seed rows; connections answer the responses below and nothing leaves the Builder. Generated values are synthetic (lab names, documentation addresses), never a real installation's." }),
-      h("div", { class: "ed-inline" }, field("Seed", seed), field("Rows per table", rows), gen, save, h("span", { class: "fw-badge fw-badge-warning", id: "td-dirty", hidden: !S.dirty, text: "Unsaved" })),
+      h("p", { class: "ed-help", text: "What a test run reads instead of SATOM's database. Load from SATOM brings the rows the target SATOM shows you (your token's ADOM and permissions): its datasets, the data stores this project uses and the lists of SATOM objects. Those rows stay on this Builder: never in a package, never sent to the AI. Generate makes synthetic rows instead (lab names, documentation addresses). Connections answer the responses below and nothing leaves the Builder. The Database tab shows all of it as tables, with a diagram and SQL." }),
+      h("div", { class: "ed-inline" }, field("SATOM rows per table", limit), imp, field("Seed", seed), field("Rows per table", rows), gen, save, h("span", { class: "fw-badge fw-badge-warning", id: "td-dirty", hidden: !S.dirty, text: "Unsaved" })),
       h("div", { class: "ed-status", id: "td-status", role: "status", "aria-live": "polite" })], { icon: "bi-database-check", id: "td-card-head" }));
     const dsCols = {};
     (info.datasets || []).forEach((d) => { dsCols[d.key] = d; });
     const keys = (info.datasets || []).map((d) => d.key);
-    if (keys.length) panel.appendChild(h("h3", { class: "ed-sub", text: "Datasets" }));
-    keys.forEach((k) => {
-      const d = dsCols[k] || { key: k, label: k, columns: [] };
-      data.datasets[k] = data.datasets[k] || { rows: [] };
-      panel.appendChild(tableEditor(ctx, rerender, "ds-" + k, d.label || k, d.columns || [], data.datasets[k].rows,
-        { regen: () => generate(ctx, rerender, [`datasets:${k}`]), note: k, icon: "bi-table",
-          help: ctx.kind === "app" ? "The fleet a test run sees: Load an appliance takes the first row, unless the step's answer below says otherwise." : d.description }));
+    const groups = ctx.kind === "app" ? [["Datasets", keys]]
+      : [["Datasets this view reads", keys.filter((k) => dsCols[k].used)], ["Other SATOM datasets (pick them in the Datasets tab)", keys.filter((k) => !dsCols[k].used)]];
+    groups.forEach(([title, list]) => {
+      if (!list.length) return;
+      panel.appendChild(h("h3", { class: "ed-sub", text: title }));
+      list.forEach((k) => {
+        const d = dsCols[k] || { key: k, label: k, columns: [] };
+        data.datasets[k] = data.datasets[k] || { rows: [] };
+        panel.appendChild(tableEditor(ctx, rerender, "ds-" + k, d.label || k, d.columns || [], data.datasets[k].rows,
+          { regen: () => generate(ctx, rerender, [`datasets:${k}`]), note: k, icon: "bi-table", origin: `datasets:${k}`,
+            help: ctx.kind === "app" ? "The fleet a test run sees: Load an appliance takes the first row, unless the step's answer below says otherwise." : d.description }));
+      });
     });
     const stores = info.stores || {};
     if (Object.keys(stores).length) panel.appendChild(h("h3", { class: "ed-sub", text: "Data stores" }));
@@ -279,7 +345,7 @@ export default {
       const types = {};
       (def.columns || []).forEach((c) => { types[c.name] = { number: "number", boolean: "boolean", json: "json" }[c.type] || "text"; });
       panel.appendChild(tableEditor(ctx, rerender, "st-" + slug, slug, (def.columns || []).map((c) => c.name), data.stores[slug].rows,
-        { regen: () => generate(ctx, rerender, [`stores:${slug}`]), types, note: def.from === "target" ? "on the target (its rows never come to the Builder)" : "in the package", icon: "bi-database" }));
+        { regen: () => generate(ctx, rerender, [`stores:${slug}`]), types, note: def.from === "target" ? "on the target" : "in the package", icon: "bi-database", origin: `stores:${slug}` }));
     });
     const conns = info.connections || {};
     if (Object.keys(conns).length) panel.appendChild(h("h3", { class: "ed-sub", text: "Connections" }));

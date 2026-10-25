@@ -5,6 +5,9 @@
 | ``GET /api/projects/<id>/testdata`` | -> ``{"data", "updated_at", "datasets", "stores", "connections", "steps", "sources", "runtime"}`` |
 | ``PUT /api/projects/<id>/testdata`` | ``{"data"}`` -> the saved test data |
 | ``POST /api/projects/<id>/testdata/generate`` | ``{"seed", "rows", "only"}`` -> the saved test data |
+| ``POST /api/projects/<id>/testdata/import`` | ``{"limit"}`` -> the test data with the target SATOM's rows (contract section 15) |
+| ``GET /api/projects/<id>/testdata/schema`` | -> ``{"tables", "relations"}``: the test data as a database, no rows |
+| ``POST /api/projects/<id>/testdata/sql`` | ``{"sql"}`` -> ``{"columns", "rows", "truncated", "ms"}``: one read-only SELECT |
 | ``POST /api/projects/<id>/test-runs`` | ``{"kind": "view|app|script", "script", "inputs", "answers"}`` -> 202 ``{"run_id"}`` |
 | ``GET /api/projects/<id>/test-runs`` | -> the last 50 runs, newest first, without their answers |
 | ``GET /api/test-runs/<run_id>`` | -> the run with its full answer |
@@ -61,9 +64,11 @@ def _describe(conn, row, data, updated_at) -> dict:
             datasets, sources = inf.get("datasets") or [], inf.get("sources") or []
         except runtime.RuntimeUnavailable as exc:
             pack, why = None, exc.message
-    used = testdata.used_datasets(proj) if proj.get("kind") in ("view", "widget") \
-        else ["fleet_appliances"]
-    datasets = [d for d in datasets if d["key"] in used]
+    reads = set(testdata.used_datasets(proj))
+    keep = testdata.dataset_keys(proj, [d["key"] for d in datasets])
+    by_key = {d["key"]: d for d in datasets}
+    datasets = [dict(by_key[k], used=k in reads or proj.get("kind") not in ("view", "widget"))
+                for k in keep]
     stores = {s: {"columns": d["columns"], "from": d["from"]}
               for s, d in testdata.store_defs(proj, snap).items()}
     conns = {s: {"kind": d.get("kind") or "http", "from": d.get("from"),
@@ -136,6 +141,95 @@ def testdata_generate(pid):
         return api_error("bad_testdata", getattr(exc, "message", None) or str(exc), 400)
     audit("testdata.generate", row["slug"], seed=seed, rows=n, only=only or [])
     return _describe(conn, row, clean, db.now())
+
+
+@bp.post("/projects/<int:pid>/testdata/import")
+@login_required
+def testdata_import(pid):
+    """The target SATOM's own rows into the test data (contract section 15):
+    every dataset the project's test data holds, the data stores it uses, the
+    satom_select lists. Connections and step answers stay."""
+    row, err = _project(pid)
+    if err:
+        return err
+    body, err = _json_body(required=False)
+    if err:
+        return err
+    try:
+        limit = int(body.get("limit") or 200)
+    except (TypeError, ValueError):
+        return api_error("bad_request", "limit is a number.", 400)
+    limit = max(1, min(limit, 2000))
+    conn = db.get()
+    snap, pack, why = _pack_for(conn, row)
+    if pack is None:
+        return api_error("no_runtime", why or "No test runtime for this project's target.", 409)
+    proj = projects.to_api(conn, row)
+    try:
+        t = targets.get_target(conn, row["target_id"])
+        keys = testdata.dataset_keys(proj, list(runtime.dataset_columns(pack)))
+        stores = list(testdata.store_defs(proj, snap))
+        with targets.client(conn, t, g.user.id) as c:
+            answer = c.data(datasets=keys, stores=stores, limit=limit)
+        current, _ = runtime.load_testdata(conn, pid)
+        clean = runtime.save_testdata(conn, pid, testdata.from_satom(current, answer, proj, snap,
+                                                                     t["name"]))
+    except SatomError as exc:
+        return api_error(exc.code, exc.message, exc.status)
+    except (testdata.TestDataError, runtime.RuntimeUnavailable) as exc:
+        return api_error("bad_testdata", getattr(exc, "message", None) or str(exc), 400)
+    audit("testdata.import", row["slug"], target=t["name"], limit=limit,
+          datasets={k: len(v["rows"]) for k, v in clean["datasets"].items()},
+          stores={k: len(v["rows"]) for k, v in clean["stores"].items()})
+    return _describe(conn, row, clean, db.now())
+
+
+def _tables(conn, row, pid):
+    """-> (tables, data, None) or (None, None, error response)."""
+    snap, pack, why = _pack_for(conn, row)
+    if pack is None:
+        return None, None, api_error("no_runtime", why or "No test runtime for this "
+                                     "project's target.", 409)
+    try:
+        info = runtime.info(pack).get("datasets") or []
+    except runtime.RuntimeUnavailable as exc:
+        return None, None, api_error(exc.code, exc.message, exc.status)
+    data, _ = runtime.load_testdata(conn, pid)
+    stores = testdata.store_defs(projects.to_api(conn, row), snap)
+    return testdata.sql_tables(data, info, stores), data, None
+
+
+@bp.get("/projects/<int:pid>/testdata/schema")
+@login_required
+def testdata_schema(pid):
+    row, err = _project(pid)
+    if err:
+        return err
+    tables, data, err = _tables(db.get(), row, pid)
+    if err:
+        return err
+    return testdata.schema(tables, data.get("origin"))
+
+
+@bp.post("/projects/<int:pid>/testdata/sql")
+@login_required
+def testdata_sql(pid):
+    row, err = _project(pid)
+    if err:
+        return err
+    body, err = _json_body()
+    if err:
+        return err
+    sql = body.get("sql")
+    if not isinstance(sql, str):
+        return api_error("bad_request", "sql is a string.", 400)
+    tables, _data, err = _tables(db.get(), row, pid)
+    if err:
+        return err
+    try:
+        return testdata.run_sql(tables, sql)
+    except testdata.TestDataError as exc:
+        return api_error("bad_sql", str(exc), 400)
 
 
 @bp.post("/projects/<int:pid>/test-runs")

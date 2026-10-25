@@ -84,16 +84,26 @@ A connection with a non-empty `password`, `secret`, `token`, `api_key` or `clien
 
 ### 4.1 Test data
 
-The **Test data** tab holds what a test run reads instead of SATOM's database, for this project only:
+The **Test data** tab holds what a test run reads instead of SATOM's database, for this project only. A project with no test data yet **starts from the data of its SATOM target** the first time you open the tab (or Database, or Test run): the tab says so. When the target cannot send it (a SATOM older than 4.2.1, no token, unreachable), the project starts from generated rows instead, and the tab says why.
 
-- **Datasets** (views and widgets): one table per dataset the view reads, with exactly the columns SATOM gives a view. The columns come from SATOM's own dataset queries, through the target's rules pack.
-- **Data stores**: the package's stores start from their seed rows; a store that exists only on the target is listed with its columns (its rows never come to the Builder).
+- **Datasets**: views and widgets get every SATOM dataset, the ones the view reads first (*Datasets this view reads*), the rest under *Other SATOM datasets* so you can look at them before picking them in the Datasets tab. An app gets the fleet only (it answers *Load an appliance* and the lists of SATOM objects). The columns are exactly those SATOM gives a view, from SATOM's own dataset queries, through the target's rules pack.
+- **Data stores**: the stores this project uses; from the target's rows, or from the package's seed rows for a store that exists only in the package.
 - **Connections**: what each connection answers. HTTP: a list of responses, each with a method (`*` = any), a path (`*` = one path segment, `**` = anything), a status and a JSON body; the first match answers, otherwise the default. PostgreSQL: rows per text found in the SQL.
 - **SATOM and device steps**: what a check, a DDI, certificate or FortiWeb step answers in a test run (ok, yes, no or error, a value, a detail). A test run never reaches a device or SATOM's fleet.
 
-**Generate all** fills everything with synthetic values (lab names such as `fwb-lab-01`, documentation addresses such as 192.0.2.10, `example.com` hosts), the same for the same **Seed**. **Regenerate** on a table redoes only that table. Edit cells in the table, switch to **JSON**, or load a **CSV** file (its header names the columns). **Save test data** keeps your changes; test data is separate from the project and never travels in the package.
+**Load from SATOM** reads the rows again, at most *SATOM rows per table* (default 200, up to 2,000). They are the rows the target SATOM shows **you**: your token's ADOM, no maintenance device unless you may see them, the audit log only with the audit permission, sensitive columns masked, values as text (as a view sees them). Connections and step answers are not SATOM's data and stay as they are. Those rows stay on the Builder: they never travel in a package and are never sent to the AI. SATOM writes an audit line for each read.
 
-### 4.2 Test runs
+**Generate all** fills everything with synthetic values instead (lab names such as `fwb-lab-01`, documentation addresses such as 192.0.2.10, `example.com` hosts), the same for the same **Seed**. **Regenerate** on a table redoes only that table. Every table shows where its rows came from: *from SATOM* (target, time, and *first rows of N* when SATOM had more), *generated (seed N)*, *package seed rows*, and *edited* once you change it. Edit cells in the table, switch to **JSON**, or load a **CSV** file (its header names the columns). **Save test data** keeps your changes; test data is separate from the project and never travels in the package.
+
+### 4.2 Database
+
+The **Database** tab shows the saved test data as a database:
+
+- **Diagram**: one box per table, with its columns and their types. A dataset is a table named by its key (`fleet_appliances`), a data store a table `store_<slug>`. Lines join a column to the table it refers to (`appliance_id` and `device` to `fleet_appliances`, `server_pool` to `server_pools`, `wpp` to `web_protection_profiles`); the relations are also listed as text. Click a table to highlight its lines and see its columns, where its rows came from and, for a dataset, **the query SATOM fills it with** (PostgreSQL, run on SATOM).
+- **SQL**: one read-only SQLite `SELECT` (or `WITH`) over the saved test data, at most 500 rows back, stopped after 3 seconds. **Example queries** offers one per table, a join per relation and devices per kind. Ctrl+Enter runs the query. A write, `ATTACH`, `PRAGMA` or a file function is refused: change data in the Test data tab.
+- The **Assistant** knows these tables (names, types, row counts, relations; never a row) and answers questions about the data with a query you can run here.
+
+### 4.3 Test runs
 
 The **Test run** tab runs the **saved** project with SATOM's own runtime, taken verbatim from the target's rules pack, on the test data, here on the Builder. Nothing is sent to SATOM and nothing leaves the Builder: the run has no network.
 
@@ -103,7 +113,7 @@ The **Test run** tab runs the **saved** project with SATOM's own runtime, taken 
 
 Every run is kept: the history lists the last 50 runs of the project, with their inputs (passwords masked), and a run goes on if you close the page. Test runs need SATOM 4.2.0 or later on the target; script runs need `bubblewrap` on the Builder server (the installer installs it; the tab says so when it is missing).
 
-### 4.3 From the Builder to production
+### 4.4 From the Builder to production
 
 1. Build and test here: **Check** (the rules pack), then **Test run** on your test data until it does what you want.
 2. Send it to your **test SATOM**: link the project to that target, **Validate on SATOM**, **Rehearse** (unarmed, against that server's own objects), then **Import** (it lands in draft or testing there).
@@ -125,7 +135,7 @@ Generation needs the target's rules pack: if it is missing or was made for anoth
 The editor's **Assistant** tab keeps conversations with an AI profile about the project. Each conversation is stored on the Builder with its files: close the page or open the project tomorrow and it is there, with the status of every reply.
 
 - **Attach** images (PNG, JPEG, GIF, WebP, up to 5 MB) and text files (code, JSON, CSV, YAML, logs, up to 512 KB). Images reach the model as images: pick a profile whose model reads images. Text files go into the request.
-- **Send** (or Ctrl+Enter) saves the project and starts the reply on the server. The model gets the author guide, the target's names and shapes, the saved draft, the conversation so far and your files; never data rows or secrets.
+- **Send** (or Ctrl+Enter) saves the project and starts the reply on the server. The model gets the author guide, the target's names and shapes, the saved draft, the conversation so far, your files and the tables of the test database (names, types, row counts, relations); never data rows or secrets.
 - A reply may answer a question without changing anything, or propose a draft. A draft is checked by the rules pack and repaired like Generate; problems left are shown under the reply.
 - **Apply to the project** makes the draft the project (a normal save: the previous version is kept as a revision). Until then nothing changes. **Show the draft** shows it first.
 - A reply cut by a restart of the Builder is marked as such: send the message again.

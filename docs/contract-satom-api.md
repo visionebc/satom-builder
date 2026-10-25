@@ -23,6 +23,7 @@ All errors use SATOM's API error shape: `{"error": "<code>", "message": "<Englis
 | `POST /rehearse` | write | the owner may author in Plugin Studio (`studio.script_library`) | Unarmed run of the package's app against this server's existing objects, installs nothing (section 5) |
 | `POST /import` | admin | owner is super-admin | Same path as the UI import (section 6) |
 | `GET /publishers` | read | — | `[{key_id, label, enabled, created_at}]` |
+| `GET /data` | read | the owner may author in Plugin Studio (`studio.script_library`) | This server's rows for the Builder's test data (section 15) |
 | `POST /publishers` | admin | owner is super-admin | Register a publisher key: body `{"label": str<=80, "public_key": base64 of the raw 32-byte Ed25519 key}` → `201 {"key_id"}`. The call is idempotent: the same key returns `200` with the existing `key_id`. |
 
 Package bodies (`validate`, `rehearse`, `import`) are `multipart/form-data`:
@@ -398,3 +399,38 @@ The rules pack also carries the code the Builder TESTS a package with, on its ow
 | `GET /api/chats/<cid>/messages/<mid>[/draft]`, `POST …/apply` | a reply, its draft, apply it to the project |
 
 The AI answer of a conversation may carry `"message"` (a note to the author) and may be `{"message": ...}` alone (no change).
+
+## 15. Test data from the target's SATOM, and the test database (2026-10-25, SATOM 4.2.1, Builder 0.2.1)
+
+Requested: "add the data we have in SATOM to the Builder so something already exists, with the database diagram and SQL so it can be queried".
+
+`GET /api/v1/builder/data?datasets=<a,b>&stores=<x,y>&limit=<n>` (scope `read`; the owner must be a Plugin Studio author, else `403 owner_forbidden`; the owner's ADOM like every call). `datasets` / `stores` are comma lists, absent = all, empty = none; `limit` is rows per table, 1 to 2000, default 200.
+
+```json
+{"format": "satom.builder-data/1", "satom_version", "product", "taken_at", "limit",
+ "datasets": {"<key>": {"columns": [...], "rows": [{...}], "total": n, "truncated": bool, "error"?: str}},
+ "stores": {"<slug>": {"columns": [{"name", "label", "type", "required"}], "rows": [{..., "_id"}], "total": n, "truncated": bool}},
+ "sources": {"<satom_select source>": [{"value", "label"}]},
+ "unknown": {"datasets": [...], "stores": [...]}}
+```
+
+- **Dataset rows** are what a view rendered on that SATOM shows the token's owner: `plugin_sandbox.load_datasets` (the fixed query through `dbintrospect.run_query`: read-only, sensitive columns masked, values as text), cut to the owner's visible appliances and ADOM, `audit_recent` only with `audit.view`.
+- **Store rows** carry the declared columns plus `_id`; never `_by`, `_created_at`, `_updated_at`.
+- **sources** are `studio_satom.source_options` for every source the server can build. Since 4.2.1 the device lists (`appliances`, `fortiweb`) follow the viewer's ADOM and maintenance permission in a request (before, a form listed the whole fleet in every ADOM).
+- The answer stays under 3 MB: a table that does not fit is cut and marked `truncated`. One audit line `builder.data` with the row counts per table.
+- A SATOM without the route answers 404 (`{"error": "Not found"}` on 4.2.0); the Builder reports "needs SATOM 4.2.1" (`409 no_data_api`) and generates test data instead.
+
+**Builder side.** The rows are the test data of ONE project on the Builder that asked: never written to a package, a repository or a prompt. `testdata.from_satom` replaces the datasets the project's test data holds (a view: every dataset, the declared ones first; an app: `fleet_appliances` only), the stores the project uses that exist on the target (a package-only store keeps its seed rows) and the `sources`; connections and step answers stay. The test data document gains `origin`: `{"datasets:<k>" | "stores:<slug>" | "sources": {"source": "satom"|"generated"|"package", "at", "target", "total", "truncated", "edited"}}`. A document over 4 MB loses rows from its largest table first, marked `truncated`. A project with no test data yet is filled by the editor the first time it opens Test data, Database or Test run (from SATOM, else generated).
+
+**The test database.** `testdata.sql_tables` lays the saved test data out as tables: a dataset = its key, a store = `store_<slug>` (`_id` first, then its declared columns). `testdata.schema` adds the relations a diagram draws, from the known references `appliance_id` → `fleet_appliances.id`, `device` → `fleet_appliances.name`, `server_pool` → `server_pools.name`, `wpp` → `web_protection_profiles.name` (only between tables that are there). `testdata.run_sql` runs one statement in a private in-memory SQLite: an authorizer allows SELECT, READ, FUNCTION and RECURSIVE only (no write, no ATTACH, no PRAGMA; `zeroblob`, `randomblob`, `load_extension`, `readfile`, `writefile`, `edit`, `fts3_tokenizer` refused), a progress handler stops it after 3 s, a value is at most 10 MB, at most 500 rows come back. The runtime's `info` op now also returns each dataset's `sql` (the fixed query from `plugin_sandbox.DATASETS`, shown, never run by the Builder).
+
+The assistant's prompt gains "The project's test database": `testdata.schema_text`, i.e. table names, kinds, column names and types, row counts, origins and relations; never a row.
+
+**§11 Internal API, additions (Builder 0.2.1)**
+
+| Route | Body → Answer |
+|---|---|
+| `GET /api/projects/<id>/testdata` | as in 0.2.0; `datasets[]` gains `sql` and `used` (the view reads it; always true for an app) |
+| `POST /api/projects/<id>/testdata/import` | `{"limit"}` → the GET shape, saved, with the target SATOM's rows; `409 no_data_api` (SATOM older than 4.2.1), `403 satom_forbidden` (owner not a Plugin Studio author) |
+| `GET /api/projects/<id>/testdata/schema` | → `{"tables": [{name, kind, key, label, sql, columns: [{name, type}], rows: <count>, origin}], "relations": [{from, column, to, to_column}]}`; no row |
+| `POST /api/projects/<id>/testdata/sql` | `{"sql"}` → `{"columns", "rows": [[...]], "truncated", "ms"}`; `400 bad_sql` with SQLite's message |
