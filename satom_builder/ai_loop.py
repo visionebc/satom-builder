@@ -58,6 +58,18 @@ Builder keeps the rows it already has.
 """
 
 
+CHAT_CONTRACT = """\
+# Conversation (SATOM Builder assistant)
+
+You are in a conversation with the author about this draft. Add the key
+"message" to your JSON object: a short note to the author, in the author's
+language, saying what you changed and why, or answering their question. When
+the author only asks a question and nothing should change, answer with
+{"message": "..."} alone. Files the author attached are shown under
+"Attached files"; images are attached to this message.
+"""
+
+
 class ParseError(ValueError):
     pass
 
@@ -133,8 +145,8 @@ def draft_for_prompt(project: dict) -> dict:
 
 
 def build_prompt(author_guide: str, snapshot: dict, project: dict, author_text: str,
-                 feedback: str = "") -> tuple[str, str]:
-    system = author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT
+                 feedback: str = "", chat: bool = False) -> tuple[str, str]:
+    system = author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT + ("\n" + CHAT_CONTRACT if chat else "")
     compact = {"sort_keys": True, "ensure_ascii": False, "separators": (",", ":")}
     user = ("# Target SATOM (names and shapes only)\n\n```json\n"
             + json.dumps(target_summary(snapshot, str(project.get("kind") or "app")), **compact)
@@ -153,6 +165,11 @@ _FENCE = re.compile(r"^\s*```[a-zA-Z0-9_-]*\s*\n(.*?)\n\s*```\s*$", re.S)
 
 
 def parse_answer(text: str) -> dict:
+    return parse_answer_full(text)[0]
+
+
+def parse_answer_full(text: str, allow_message: bool = False) -> tuple[dict, str]:
+    """-> (the draft keys, the "message" when *allow_message*)."""
     s = (text or "").strip()
     m = _FENCE.match(s)
     if m:
@@ -169,10 +186,14 @@ def parse_answer(text: str) -> dict:
             raise ParseError(f"The answer is not valid JSON: {exc}") from None
     if not isinstance(obj, dict):
         raise ParseError("The answer is JSON but not an object.")
-    unknown = [k for k in obj if k not in RESULT_KEYS and k != "kind"]
+    extra = ("kind", "message") if allow_message else ("kind",)
+    unknown = [k for k in obj if k not in RESULT_KEYS and k not in extra]
     if unknown:
         raise ParseError(f"Unknown key(s) in the answer: {', '.join(sorted(unknown)[:5])}.")
-    return {k: v for k, v in obj.items() if k in RESULT_KEYS}
+    message = obj.get("message") if allow_message else ""
+    if message is not None and not isinstance(message, str):
+        message = json.dumps(message, ensure_ascii=False)
+    return {k: v for k, v in obj.items() if k in RESULT_KEYS}, (message or "")[:20000]
 
 
 def merge(project: dict, patch: dict) -> dict:
@@ -201,20 +222,32 @@ def problems_text(result: dict) -> str:
 # the loop
 # --------------------------------------------------------------------------
 def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: list,
-        max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "") -> dict:
-    """-> {"ok", "rounds": [...], "project": candidate, "check": last result}.
-    Raises AIError (provider) and RulesError (pack)."""
+        max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "",
+        chat: bool = False, images: list | None = None) -> dict:
+    """-> {"ok", "rounds": [...], "project": candidate, "check": last result,
+    "message": the model's note (chat)}. Raises AIError (provider) and
+    RulesError (pack). In a chat (*chat*) the model may answer with a message
+    alone: nothing is checked and the draft is unchanged."""
     guide = pack.author_guide(snapshot)
     max_rounds = max(1, min(int(max_rounds or DEFAULT_MAX_ROUNDS), MAX_ROUNDS_CAP))
     rounds: list[dict] = []
     current = project
     feedback = ""
     last = None
+    message = ""
     for n in range(1, max_rounds + 1):
-        system, user = build_prompt(guide, snapshot, current, author_text, feedback)
-        answer = adapter.complete(system, user)
+        system, user = build_prompt(guide, snapshot, current, author_text, feedback, chat=chat)
+        answer = adapter.complete(system, user, images=images) if images else \
+            adapter.complete(system, user)
         try:
-            patch = parse_answer(answer)
+            patch, note = parse_answer_full(answer, allow_message=chat)
+            message = note or message
+            if chat and not patch:
+                rounds.append({"n": n, "ok": True, "at": db.now(), "problems": [],
+                               "message_only": True})
+                if on_round:
+                    on_round(rounds)
+                break
             shaped = projects.validate_patch(patch)
         except (ParseError, projects.ShapeError) as exc:
             msg = getattr(exc, "message", None) or str(exc)
@@ -245,7 +278,8 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
         feedback = problems_text(last)
     ok = bool(rounds and rounds[-1]["ok"])
     return {"ok": ok, "rounds": rounds,
-            "project": current if current is not project else None, "check": last}
+            "project": current if current is not project else None, "check": last,
+            "message": message}
 
 
 # --------------------------------------------------------------------------

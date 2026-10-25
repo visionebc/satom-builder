@@ -108,8 +108,8 @@ export function parseWhere(where, message, kind) {
 
 /* The tabs a project kind shows; a target on a tab the kind lacks goes to Raw. */
 export function tabsFor(kind) {
-  if (kind === "app") return ["form", "diagram", "actions", "stores", "connections", "apis", "design", "scripts", "testdata", "testrun", "raw"];
-  return ["files", "datasets", "params", "preview", "testdata", "testrun", "raw"];
+  if (kind === "app") return ["form", "diagram", "actions", "stores", "connections", "apis", "design", "scripts", "testdata", "testrun", "chat", "raw"];
+  return ["files", "datasets", "params", "preview", "testdata", "testrun", "chat", "raw"];
 }
 
 export function resolveTarget(where, message, kind) {

@@ -20,8 +20,9 @@ import rawTab from "./tabs/raw.js";
 import { files as filesTab, datasets as datasetsTab, params as paramsTab, preview as previewTab } from "./tabs/view.js";
 import testdataTab from "./tabs/testdata.js";
 import testrunTab from "./tabs/testrun.js";
+import chatTab from "./tabs/chat.js";
 
-const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, testrun: testrunTab };
+const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, testrun: testrunTab, chat: chatTab };
 const $ = (id) => document.getElementById(id);
 const DRAFT_DELAY = 400;
 
@@ -69,6 +70,15 @@ function boot() {
   ctx.ensureSaved = async () => (M.isDirty(ctx.project, ctx.saved) || rawTab.pending() ? save() : true);
   ctx.testScript = (slug) => { testrunTab.pickScript(slug); activate("testrun", true); };
   ctx.activate = (id) => activate(id, true);
+  /* A project saved elsewhere (a chat draft applied): it is now the saved state. */
+  ctx.replaceProject = (p) => {
+    ctx.project = p;
+    ctx.saved = clone(p);
+    M.clearDrafts(window.localStorage, p.id);
+    syncDetails();
+    updateDirty();
+    if (p.last_check) setCheck(checkOf(p.last_check), "Check stored with the project");
+  };
 
   /* ── header ────────────────────────────────────────────────────────── */
   /* The backend stores {source, at, result}; a fresh check() answer is the
@@ -459,17 +469,19 @@ function boot() {
     if (j.status === "running") { A.timer = setTimeout(poll, 1500); return; }
     $("ai-generate").disabled = false;
     if (j.status === "failed") { say(st, "Generation failed: " + (j.error || "no detail"), "bad"); ctx.say("AI generation failed.", "bad"); return; }
+    // The job does not save (the author applies the draft): the generated
+    // draft becomes unsaved changes, kept in the local draft until Save.
+    // Marking it saved, as this did, lost it on the next reload.
     const fresh = j.project || (await ctx.api.project(ctx.project.id));
     ctx.project = fresh;
-    ctx.saved = clone(fresh);
-    M.clearDrafts(window.localStorage, fresh.id);
+    if (!j.project) ctx.saved = clone(fresh);
     syncDetails();
-    updateDirty();
+    ctx.changed();
     if (fresh.last_check) setCheck(checkOf(fresh.last_check), "Check of the generated draft");
     else keepFocus(() => renderActive());
     const rounds = j.rounds || [];
     const last = rounds[rounds.length - 1];
-    const msg = `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".");
+    const msg = `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".") + (j.project ? " Save to keep it." : "");
     say(st, msg, last && !last.ok ? "info" : "ok");
     ctx.say(msg, last && !last.ok ? "info" : "ok");
   }

@@ -154,6 +154,44 @@ MIGRATIONS: list[list[str]] = [
             data TEXT NOT NULL,
             PRIMARY KEY (target_id, user_id, key))""",
     ],
+    # 4 -- the assistant chat: conversations, messages, attached files (0.2.0)
+    [
+        """CREATE TABLE IF NOT EXISTS chats (
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL DEFAULT '',
+            profile_id INTEGER,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL)""",
+        "CREATE INDEX IF NOT EXISTS chats_project ON chats(project_id, updated_at)",
+        """CREATE TABLE IF NOT EXISTS chat_files (
+            id INTEGER PRIMARY KEY,
+            chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            mime TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('image','text')),
+            size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            data BLOB NOT NULL,
+            created_at REAL NOT NULL)""",
+        """CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY,
+            chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK (role IN ('user','assistant')),
+            content TEXT NOT NULL DEFAULT '',
+            files TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL CHECK (status IN ('done','running','failed')),
+            rounds TEXT NOT NULL DEFAULT '[]',
+            draft TEXT,
+            applied_at REAL,
+            error TEXT NOT NULL DEFAULT '',
+            profile TEXT NOT NULL DEFAULT '',
+            runner TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL)""",
+        "CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat_id, id)",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

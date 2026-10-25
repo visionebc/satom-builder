@@ -17,11 +17,12 @@
   {% set tabs = [("form", "Form", "bi-ui-checks"), ("diagram", "Diagram", "bi-diagram-3"), ("actions", "Actions", "bi-lightning"),
                  ("stores", "Stores", "bi-database"), ("connections", "Connections", "bi-plug"), ("apis", "API Catalog", "bi-journal-code"),
                  ("design", "Design", "bi-palette"), ("scripts", "Scripts", "bi-filetype-py"),
-                 ("testdata", "Test data", "bi-database-check"), ("testrun", "Test run", "bi-play-btn"), ("raw", "Raw JSON", "bi-braces")] %}
+                 ("testdata", "Test data", "bi-database-check"), ("testrun", "Test run", "bi-play-btn"), ("chat", "Assistant", "bi-chat-dots"),
+                 ("raw", "Raw JSON", "bi-braces")] %}
 {% else %}
   {% set tabs = [("files", "Files", "bi-file-earmark-code"), ("datasets", "Datasets", "bi-table"), ("params", "Params", "bi-sliders"),
                  ("preview", "Preview", "bi-eye"), ("testdata", "Test data", "bi-database-check"), ("testrun", "Test run", "bi-play-btn"),
-                 ("raw", "Raw JSON", "bi-braces")] %}
+                 ("chat", "Assistant", "bi-chat-dots"), ("raw", "Raw JSON", "bi-braces")] %}
 {% endif %}
 <div class="ed-page" id="editor" data-kind="{{ kind }}" data-project-id="{{ project.get("id") }}">
   <header class="ed-header fw-card" id="ed-header">
@@ -119,7 +120,7 @@
   <dialog class="ed-dialog ed-dialog-wide" id="dlg-ai" aria-labelledby="ai-title">
     <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="ai-title">Generate with AI</h2>
       <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ai-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
-    <p class="ed-help">The model gets the author guide, the target schema, the saved draft and your text. Never data rows, never secrets. Its draft is checked by the rules pack; problems left after the repair rounds are shown, never fixed silently.</p>
+    <p class="ed-help">The model gets the author guide, the target schema, the saved draft and your text. Never data rows, never secrets. Its draft is checked by the rules pack; problems left after the repair rounds are shown, never fixed silently. For a conversation with files and images that is kept, use the <strong>Assistant</strong> tab.</p>
     <div class="ed-grid ed-grid-3">
       <div class="ed-field ed-span-2"><label class="form-label ed-label" for="ai-profile">AI profile</label><select class="form-select form-select-sm" id="ai-profile"><option value="">Loading…</option></select></div>
       <div class="ed-field"><label class="form-label ed-label" for="ai-rounds">Repair rounds (at most)</label><input class="form-control form-control-sm" id="ai-rounds" type="number" min="1" max="10" value="3"></div>

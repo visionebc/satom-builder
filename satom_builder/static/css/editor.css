@@ -238,3 +238,31 @@ body.ed-checks-open .ed-checks { display: block; }
   .ed-code-gutter, .ed-code-text { font-size: 16px; line-height: 22px; }
   .ed-checks { width: 100%; }
 }
+
+/* Test data / Test run tabs */
+.ed-td-wide { min-width: 220px; }
+.ed-td-wide textarea { min-height: 2.4em; }
+
+/* Assistant tab */
+.ed-chat { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; }
+.ed-chat-side { display: flex; flex-direction: column; gap: 8px; }
+.ed-chat-list { max-height: 60vh; overflow: auto; }
+.ed-chat-list .ed-subnav-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+.ed-chat-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ed-chat-head { justify-content: space-between; }
+.ed-chat-thread { max-height: 60vh; min-height: 200px; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; background: var(--fw-surface-alt, #F8FAFE); border: 1px solid var(--ed-border, #DCE4F3); border-radius: 8px; }
+.ed-msg { border-radius: 10px; padding: 8px 12px; max-width: 92%; border: 1px solid var(--ed-border, #DCE4F3); background: #FFFFFF; }
+.ed-msg-user { align-self: flex-end; background: rgba(239, 84, 36, 0.06); border-color: rgba(239, 84, 36, 0.25); }
+.ed-msg-ai { align-self: flex-start; }
+.ed-msg-meta { font-size: 11.5px; color: var(--fw-text-secondary, #5A6478); margin-bottom: 3px; }
+.ed-msg-text { white-space: pre-wrap; font-size: 13.5px; overflow-wrap: anywhere; }
+.ed-msg-files, .ed-msg-rounds { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ed-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ed-border, #DCE4F3); border-radius: 12px; padding: 1px 8px; font-size: 12px; background: #FFFFFF; text-decoration: none; color: inherit; }
+.ed-chat-compose { display: flex; flex-direction: column; gap: 6px; }
+.ed-chat-prof { min-width: 220px; }
+.ed-chat-rounds { max-width: 110px; }
+@media (max-width: 760px) {
+  .ed-chat { grid-template-columns: 1fr; }
+  .ed-chat-list { max-height: 30vh; }
+  .ed-msg { max-width: 100%; }
+}

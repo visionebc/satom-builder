@@ -35,6 +35,11 @@ FIRST_PARTY_HOSTS = ("api.anthropic.com",)
 MAX_ANSWER = 4 * 1024 * 1024
 
 
+def _b64(data: bytes) -> str:
+    import base64
+    return base64.b64encode(data).decode("ascii")
+
+
 class AIError(Exception):
     def __init__(self, message: str, code: str = "ai_error"):
         super().__init__(message)
@@ -74,14 +79,20 @@ class AnthropicAdapter:
         return self._factory(**kw)
 
     def request(self, system: str, user: str, *, max_tokens: int | None = None,
-                effort: str | None = None) -> dict:
-        """The exact keyword arguments sent to the SDK's ``stream()``."""
+                effort: str | None = None, images: list | None = None) -> dict:
+        """The exact keyword arguments sent to the SDK's ``stream()``.
+        *images*: ``[{"mime", "data": bytes}]`` attached to the user turn."""
+        content = user
+        if images:
+            content = [{"type": "image", "source": {"type": "base64", "media_type": im["mime"],
+                                                    "data": _b64(im["data"])}} for im in images]
+            content.append({"type": "text", "text": user})
         kw = {
             "model": self.p.get("model") or DEFAULT_MODEL,
             "max_tokens": int(max_tokens or self.p.get("max_tokens") or DEFAULT_MAX_TOKENS),
             "system": [{"type": "text", "text": system,
                         "cache_control": {"type": "ephemeral"}}],
-            "messages": [{"role": "user", "content": user}],
+            "messages": [{"role": "user", "content": content}],
             "output_config": {"effort": effort or self.p.get("effort") or "high"},
         }
         if self.uses_fallbacks:
@@ -178,10 +189,18 @@ class OpenAICompatibleAdapter:
         return base + "/chat/completions"
 
     def request(self, system: str, user: str, *, max_tokens: int | None = None,
-                effort: str | None = None) -> dict:
+                effort: str | None = None, images: list | None = None) -> dict:
+        content = user
+        if images:
+            # OpenAI's vision shape, which Ollama, vLLM and LM Studio accept for
+            # a model that reads images; a text-only model refuses it.
+            content = [{"type": "text", "text": user}] + [
+                {"type": "image_url", "image_url": {
+                    "url": "data:%s;base64,%s" % (im["mime"], _b64(im["data"]))}}
+                for im in images]
         return {"model": self.p.get("model") or "",
                 "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
+                             {"role": "user", "content": content}],
                 "max_tokens": int(max_tokens or self.p.get("max_tokens") or DEFAULT_MAX_TOKENS)}
 
     def complete(self, system: str, user: str, **over) -> str:
