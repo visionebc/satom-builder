@@ -1,0 +1,25 @@
+# SATOM Builder web application (gunicorn, loopback only).
+#
+# nginx terminates TLS in front of it; the application port is NEVER published
+# on a routable address. The update runner re-copies this file on every update,
+# so the loopback bind lives HERE, not in an installer sed. The service account
+# is pinned again by the drop-in 10-app-user.conf (installer / runner), which
+# survives that re-copy and carries a custom account name if one is used.
+[Unit]
+Description=SATOM Builder web application
+After=network.target
+
+[Service]
+Type=simple
+User=satom-builder
+Group=satom-builder
+WorkingDirectory=/opt/satom-builder
+EnvironmentFile=/opt/satom-builder/.env
+UMask=0027
+PrivateTmp=yes
+ExecStart=/opt/satom-builder/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8100 --timeout 300 --access-logfile /var/log/satom-builder/access.log --error-logfile /var/log/satom-builder/error.log satom_builder.wsgi:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

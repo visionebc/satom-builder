@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtualenvs (the dev/test venv and the installed one)
+venv/
+.venv/
+
+# Node-local runtime state. On an installed node /opt/satom-builder IS this
+# tree, so these paths hold the SQLite database, the update queue, uploads
+# and secrets. They must never be committed, and the update runner's
+# baseline commit relies on this file to leave them out.
+/data/
+/state/
+/pki/
+.env
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Build output (offline bundles, update packages)
+/dist/
+
+# Private key material must never enter the tree.
+*.key
+release_ed25519
+*.passphrase
+
+# Editor / local backups
+*.bak
+*.bak-*
+*.pre-*
+.cache/

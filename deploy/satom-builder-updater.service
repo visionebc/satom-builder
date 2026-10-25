@@ -1,0 +1,17 @@
+# Privileged update runner (root, oneshot). Triggered by
+# satom-builder-updater.path when data/update-requests/ becomes non-empty.
+#
+# It runs as ROOT on purpose (it replaces the tree, installs units and restarts
+# the service) and therefore NEVER from the application tree, which the service
+# account owns. The ExecStart below already names the root-owned copy; the
+# drop-in 10-root-copy.conf written by deploy/install-runner.sh replaces it with
+# the exact system interpreter that install-runner.sh validated.
+[Unit]
+Description=SATOM Builder update runner (privileged, oneshot)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/
+ExecStart=/usr/bin/python3 -I /usr/local/lib/satom-builder-runner/self_update_runner.py
+TimeoutStartSec=1800

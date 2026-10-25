@@ -1,0 +1,13 @@
+# Watches the update-request queue. When the web app (unprivileged) or the
+# operator CLI drops a request JSON into data/update-requests/, this fires the
+# privileged runner. DirectoryNotEmpty re-fires while anything is queued, so
+# requests are drained one after another.
+[Unit]
+Description=Watch for SATOM Builder update requests
+
+[Path]
+DirectoryNotEmpty=/opt/satom-builder/data/update-requests
+Unit=satom-builder-updater.service
+
+[Install]
+WantedBy=multi-user.target

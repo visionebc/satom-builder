@@ -1,0 +1,4 @@
+# SATOM Builder release-trust anchor (ssh allowed-signers). PUBLIC key only.
+# Install as /etc/satom-builder/release-trust.allowed_signers (root:root 0644) to turn
+# release-signature enforcement on. See docs/offline-update-packages.md.
+satom-builder-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBgOee/9091w4ngtZ4XkpjTAdInNp2grNkRcYRiTtK4 satom-builder-release
