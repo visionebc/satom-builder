@@ -71,6 +71,12 @@ data; then send it to the test SATOM, and users bring it into production."
 - **A draft made with AI (Generate) was lost on the next reload.** The editor
   marked it as saved although the job never saves (the author applies it). It
   is now an unsaved change, kept in the local draft until Save.
+- **The release gate of the update-package build held an attested release**
+  when `RELEASE_TRUST_SIGNERS` was a relative path: git verified the
+  signatures from `/`, so every signed commit read as untrusted. The path is
+  made absolute.
+- The editor's tables could widen the whole page (a visually-hidden label in a
+  table header escaped its scroll container).
 
 ### Upgrading
 

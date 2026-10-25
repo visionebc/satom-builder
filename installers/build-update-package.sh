@@ -77,6 +77,9 @@ echo "==> SATOM Builder update package $VERSION (${COMMIT:0:12})"
 if [ -n "$RELEASE_TRUST_SIGNERS" ]; then
   [ -n "$APP_TARBALL" ] && { echo "!!! RELEASE_TRUST_SIGNERS checks git history: not with APP_TARBALL" >&2; exit 1; }
   [ -f "$RELEASE_TRUST_SIGNERS" ] || { echo "!!! RELEASE_TRUST_SIGNERS $RELEASE_TRUST_SIGNERS does not exist" >&2; exit 1; }
+  # Absolute: git verifies the signatures from / (release_trust runs it with
+  # cwd=/), so a relative path made every signed commit read as untrusted ("U").
+  RELEASE_TRUST_SIGNERS="$(cd "$(dirname "$RELEASE_TRUST_SIGNERS")" && pwd)/$(basename "$RELEASE_TRUST_SIGNERS")"
   echo "--> release gate: deploy/ at ${COMMIT:0:12} must match a signed release"
   APP_DIR="$APP" HEAD_SHA="$COMMIT" SIGNERS="$RELEASE_TRUST_SIGNERS" "$PY" -I - <<'PYGATE'
 import os, shutil, sys, tempfile
