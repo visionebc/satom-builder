@@ -79,6 +79,61 @@ def columns_help(keys, defs: dict) -> str:
     return "\n".join(lines)
 
 
+def _names(node, kind, out=None):
+    """Names assigned by {% set %} (kind "store") or read (kind "load") under
+    *node*, with the line of the first occurrence."""
+    from jinja2 import nodes as N
+    out = {} if out is None else out
+    for n in node.find_all(N.Name):
+        if n.ctx == kind:
+            out.setdefault(n.name, n.lineno)
+    return out
+
+
+def loop_scope_problems(body: str) -> list[dict]:
+    """A {% set x %} inside a {% for %} does not change x after that loop
+    (Jinja scoping): the template renders, and is silently wrong (lab,
+    2026-10-26: `{% set match = true %}` in nested loops, every rule hidden).
+    Flags a name set inside a loop and read after it, in the same block."""
+    from jinja2 import Environment, TemplateSyntaxError
+    from jinja2 import nodes as N
+    try:
+        tree = Environment().parse(body or "")
+    except TemplateSyntaxError:
+        return []                       # SATOM's own check reports the syntax
+    probs, seen = [], set()
+
+    def walk(seq):
+        seq = list(seq or [])
+        for i, node in enumerate(seq):
+            if isinstance(node, N.For):
+                inside = {}
+                for a in node.find_all(N.Assign):
+                    for t in a.target.find_all(N.Name) if not isinstance(a.target, N.Name) \
+                            else [a.target]:
+                        inside.setdefault(t.name, a.lineno)
+                if inside:
+                    later = {}
+                    for sib in seq[i + 1:]:
+                        _names(sib, "load", later)
+                    for name, line in sorted(inside.items()):
+                        if name in later and (name, line) not in seen:
+                            seen.add((name, line))
+                            probs.append({"where": "files[body.jinja]:%d" % line, "message": (
+                                "line %d: {%% set %s = ... %%} is inside the {%% for %%} of line %d, "
+                                "so after that loop `%s` still has its old value (Jinja scoping; it "
+                                "is read at line %d): collect it in a namespace instead -- "
+                                "{%% set ns = namespace(%s=...) %%} before the loop, {%% set ns.%s = "
+                                "... %%} inside, ns.%s after" % (line, name, node.lineno, name,
+                                                                later[name], name, name, name))})
+            for attr in ("body", "else_", "elif_"):
+                child = getattr(node, attr, None)
+                if isinstance(child, list):
+                    walk(child)
+    walk(tree.body)
+    return probs
+
+
 def make(pack, snapshot: dict, defs: dict):
     """-> ``check(candidate) -> (problems, note)`` for views and widgets;
     ``([], why)`` when it cannot render."""
@@ -88,6 +143,9 @@ def make(pack, snapshot: dict, defs: dict):
         if candidate.get("kind") not in ("view", "widget"):
             return [], ""
         used = testdata.used_datasets(candidate)
+        scope = loop_scope_problems((candidate.get("files") or {}).get("body.jinja") or "")
+        if scope:
+            return scope, ""
         test = testdata.generate(candidate, snapshot, cols, keys=used)
         inputs = sample_inputs(candidate.get("params"))
         attempts = [{}] + ([inputs] if inputs else [])

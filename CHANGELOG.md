@@ -117,7 +117,11 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   rows with exactly each dataset's columns, with no input and with sample
   inputs; a failure is a problem of the round and goes back to the model with
   the columns and relations of the datasets it reads and of their sub-object
-  datasets. A runtime that cannot run skips the render and says so.
+  datasets. A runtime that cannot run skips the render and says so. Before
+  rendering, a `{% set x %}` inside a `{% for %}` whose `x` is read after the
+  loop is flagged (Jinja scoping: the template renders but `x` never changes
+  outside the loop — the lab view hid every rule this way), with the
+  `namespace` rewrite to apply.
 
 - **The project page now shows your AI conversations, as the editor does.**
   Reported: "the Builder has two chats, one on the project and one in the
