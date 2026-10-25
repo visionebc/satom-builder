@@ -143,6 +143,27 @@ APP_DATASET_NOTE = (
     "request is a form and a diagram over the steps listed in the schema.")
 
 
+#: SATOM's plugin sandbox (plugin_sandbox._SANDBOX: ImmutableSandboxedEnvironment,
+#: autoescape, StrictUndefined, no extension), for a view's prompt: in the lab
+#: gpt-oss wrote {% break %} and unbalanced parentheses three rounds running.
+VIEW_JINJA_NOTES = [
+    "Plain Jinja2 in an immutable sandbox with StrictUndefined: no {% break %}, "
+    "{% continue %} or {% do %} (no extension is loaded); lists and dicts cannot be "
+    "changed (no .append): accumulate with {% set ns = namespace(found=false) %} and "
+    "{% set ns.found = true %}, or filter with selectattr/rejectattr/map/select.",
+    "A row field that is not one of the dataset's columns is an error, not empty: use only "
+    "the columns the dataset has; a missing value is none, test it with `is none`/`or ''`.",
+    "A list of an object (a FortiGate policy's srcaddr, dstaddr, service...) is NOT a field of "
+    "the row: it is the dataset <type>__<list> (fortigate_firewall_policy__srcaddr), one row "
+    "per item with parent_id = the parent row's id and the item in `name`. Join it: "
+    "{% for a in fortigate_firewall_policy__srcaddr.rows if a.parent_id == p.id %}. "
+    "Declare every dataset the body reads.",
+    "Address objects (fortigate_firewall_address) hold `subnet` as 'IP MASK' "
+    "('192.0.2.5 255.255.255.255'); compare with (a.subnet or '').split(' ')[0].",
+    "Close every {% if %}/{% for %} and every parenthesis; keep expressions short.",
+]
+
+
 def app_dataset_note(keys) -> dict:
     """For an app's prompt: why it reads no dataset, and how many there are
     per product for a view (names only for views: their prompt lists them)."""
@@ -185,6 +206,7 @@ def target_summary(snapshot: dict, kind: str = "app") -> dict:
                "datasets": dataset_summary(choices.get("datasets")),
                "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS
                           if k in schema and k != "datasets"}}
+        out["jinja"] = VIEW_JINJA_NOTES
         adom = adom_summary(snapshot)
         if adom:
             out["adom"] = adom
