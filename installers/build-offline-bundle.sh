@@ -47,9 +47,10 @@ BUNDLE_EXCLUDE=(libelogind0 elogind libpam-elogind)
 echo "==> SATOM Builder offline bundle v${VERSION} (${OS_TAG}, ref ${REF})"
 command -v apt-get >/dev/null || { echo "Requires Debian/apt"; exit 1; }
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (apt needs it)"; exit 1; }
+# In a SUBSHELL: os-release defines VERSION, which would overwrite ours.
 # shellcheck disable=SC1091
-. /etc/os-release
-[ "${ID:-}" = debian ] && [ "${VERSION_ID%%.*}" = 12 ] || { echo "Run it ON Debian 12 (this is ${PRETTY_NAME:-?})"; exit 1; }
+( . /etc/os-release; [ "${ID:-}" = debian ] && [ "${VERSION_ID%%.*}" = 12 ] ) \
+    || { echo "Run it ON Debian 12 (this is $(sed -n 's/^PRETTY_NAME=//p' /etc/os-release))"; exit 1; }
 [ "$(dpkg --print-architecture)" = amd64 ] || { echo "Run it on amd64"; exit 1; }
 [ -f "$REPO_DIR/requirements.txt" ] || [ -n "${APP_TARBALL:-}" ] \
     || { echo "requirements.txt is missing from ${REPO_DIR}"; exit 1; }

@@ -248,7 +248,10 @@ esac
 
 pkg_installed() {
     case "$PKG_MGR" in
-        apt) dpkg -s "$1" >/dev/null 2>&1 ;;
+        # "ii" only: `dpkg -s` also succeeds for a REMOVED package whose
+        # config files remain ("rc"), or one left half-configured.
+        apt) case "$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null)" in ii*) return 0 ;; esac
+             return 1 ;;
         *)   rpm -q "$1" >/dev/null 2>&1 ;;
     esac
 }
@@ -350,7 +353,10 @@ bundle_select_debs() {
         pkg="$(dpkg-deb -f "$deb" Package 2>/dev/null || true)"
         ver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
         [ -n "$pkg" ] || continue
-        inst="$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || true)"
+        # Installed means status "ii": an "rc" (removed, config kept) or
+        # half-configured package still reports a Version and would be skipped.
+        inst="$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' "$pkg" 2>/dev/null || true)"
+        case "$inst" in "ii "*) inst="${inst#*|}" ;; *) inst="" ;; esac
         if [ -n "$inst" ]; then
             if dpkg --compare-versions "$inst" ge "$ver"; then continue; fi
             case " $BUNDLE_BASE_PKGS " in *" $pkg "*) continue ;; esac
@@ -366,9 +372,19 @@ bundle_install_debs() {
         return 0
     fi
     echo "bundle debs selected:" >>"$INSTALL_LOG"; echo "$list" >>"$INSTALL_LOG"
+    # apt, given the FILES, resolves and orders them itself -- including
+    # Pre-Depends, which a single `dpkg -i` of the whole list does not honour
+    # (alphabetical: python3-minimal before python3.11-minimal fails on a bare
+    # image, found by installing offline on one). --no-download: the bundle is
+    # the only source. NEVER `apt-get -f install` as a fallback: with no network
+    # it "fixes" a half-installed set by REMOVING it.
     # shellcheck disable=SC2086
-    dpkg -i $list >>"$INSTALL_LOG" 2>&1 \
-        || apt-get -y -f --no-download install >>"$INSTALL_LOG" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-download --no-install-recommends \
+        -o Dpkg::Options::=--force-confold $list >>"$INSTALL_LOG" 2>&1 && return 0
+    echo "apt-get could not install the bundle's files; two dpkg passes" >>"$INSTALL_LOG"
+    # shellcheck disable=SC2086
+    dpkg -i $list >>"$INSTALL_LOG" 2>&1 || dpkg -i $list >>"$INSTALL_LOG" 2>&1
+    dpkg --configure -a >>"$INSTALL_LOG" 2>&1
 }
 _suse_bundle_repo() {  # prints a temp dir holding a repos.d with ONLY the bundle
     local zr; zr="$(mktemp -d)"
@@ -476,6 +492,17 @@ uninstall() {
     rm -f "$SUDOERS_FILE"
     rm -f /etc/nginx/sites-enabled/satom-builder.conf /etc/nginx/sites-available/satom-builder.conf \
           /etc/nginx/conf.d/satom-builder.conf /etc/nginx/vhosts.d/satom-builder.conf
+    # Put back what the install disabled, and nothing else.
+    if [ -f "$ETC_DIR/.nginx-default-site-disabled" ] && [ -f /etc/nginx/sites-available/default ] \
+       && [ ! -e /etc/nginx/sites-enabled/default ]; then
+        ln -s ../sites-available/default /etc/nginx/sites-enabled/default
+        rm -f "$ETC_DIR/.nginx-default-site-disabled"
+        ok "Re-enabled the distro's default site"
+    fi
+    if [ -f /etc/nginx/conf.d/default.conf.disabled-by-satom-builder ] && [ ! -e /etc/nginx/conf.d/default.conf ]; then
+        mv /etc/nginx/conf.d/default.conf.disabled-by-satom-builder /etc/nginx/conf.d/default.conf
+        ok "Restored the packaged conf.d/default.conf"
+    fi
     if command -v nginx >/dev/null 2>&1 && nginx -t >>"$INSTALL_LOG" 2>&1; then
         systemctl try-restart nginx >>"$INSTALL_LOG" 2>&1 || true
     fi
@@ -1150,6 +1177,7 @@ stock_debian_default() {
 }
 if stock_debian_default; then
     rm -f /etc/nginx/sites-enabled/default
+    : > "$ETC_DIR/.nginx-default-site-disabled"     # --uninstall puts it back
     ok "Disabled the distro's unmodified welcome site (sites-available/default is kept)"
 fi
 # nginx.org packages ship conf.d/default.conf (a welcome page on :80
