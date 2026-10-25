@@ -276,7 +276,7 @@ def chat_message(cid, mid):
         return err
     files = {r["id"]: chat.file_meta(r) for r in db.get().execute(
         "SELECT id, name, mime, kind, size FROM chat_files WHERE chat_id = ?", (cid,))}
-    return chat.message_answer(m, files)
+    return chat.message_answer(m, files, ai_loop.load_progress(db.get(), "chat_progress", mid))
 
 
 @bp.get("/chats/<int:cid>/messages/<int:mid>/draft")

@@ -452,9 +452,10 @@ def generate(pid):
     assets = projects.asset_blobs(conn, pid)
     min_satom = str(snap.get("satom_version") or "")
 
-    def work(job_id, jconn, update):
+    def work(job_id, jconn, update, progress):
         return ai_loop.run(adapter, pack, snap, proj, prompt, assets,
-                           max_rounds=max_rounds, on_round=update, min_satom=min_satom)
+                           max_rounds=max_rounds, on_round=update, min_satom=min_satom,
+                           progress=progress)
 
     job_id = ai_loop.start_job(current_app._get_current_object(), project_id=pid,
                                user_id=g.user.id, work=work)
@@ -469,7 +470,7 @@ def job_get(job_id):
     jr = db.get().execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if jr is None or (jr["user_id"] != g.user.id and not g.user.is_admin):
         return api_error("not_found", "No such job.", 404)
-    return ai_loop.job_answer(jr)
+    return ai_loop.job_answer(jr, ai_loop.load_progress(db.get(), "job_progress", job_id))
 
 
 @bp.get("/ai/profiles")

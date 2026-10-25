@@ -253,13 +253,20 @@ def problems_text(result: dict) -> str:
 # --------------------------------------------------------------------------
 def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: list,
         max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "",
-        chat: bool = False, images: list | None = None) -> dict:
+        chat: bool = False, images: list | None = None, progress=None) -> dict:
     """-> {"ok", "rounds": [...], "project": candidate, "check": last result,
     "message": the model's note (chat)}. Raises AIError (provider) and
     RulesError (pack). In a chat (*chat*) the model may answer with a message
-    alone: nothing is checked and the draft is unchanged."""
+    alone: nothing is checked and the draft is unchanged. *progress* (a
+    :class:`progress.Progress`) records every step and streams the model's
+    thinking and answer as they arrive."""
+    pg = progress
+    if pg:
+        pg.step("Reading the author guide from SATOM's rules pack "
+                f"(SATOM {getattr(pack, 'satom_version', '') or '?'})")
     guide = pack.author_guide(snapshot)
     max_rounds = max(1, min(int(max_rounds or DEFAULT_MAX_ROUNDS), MAX_ROUNDS_CAP))
+    model = str((getattr(adapter, "p", None) or {}).get("model") or "the model")
     rounds: list[dict] = []
     current = project
     feedback = ""
@@ -267,14 +274,34 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
     message = ""
     for n in range(1, max_rounds + 1):
         system, user = build_prompt(guide, snapshot, current, author_text, feedback, chat=chat)
-        answer = adapter.complete(system, user, images=images) if images else \
-            adapter.complete(system, user)
+        kw = {"images": images} if images else {}
+        if pg:
+            size = len(system.encode("utf-8")) + len(user.encode("utf-8"))
+            pg.step(f"Round {n}/{max_rounds}: sending the request to {model} "
+                    f"({size // 1024} KB, about {size // 4000}k tokens"
+                    + (f", {len(images)} image(s)" if images else "") + ")"
+                    + (" with the problems to fix" if feedback else ""))
+            pg.step(f"{model} is reading the request and writing the answer")
+            pg.model(round_no=n, rounds=max_rounds, model=model)
+            kw["sink"] = pg
+        try:
+            answer = adapter.complete(system, user, **kw)
+        except Exception as exc:
+            if pg:
+                pg.model_done()
+                pg.end("bad", redact(getattr(exc, "message", None) or str(exc)))
+            raise
+        if pg:
+            pg.model_done()
+            pg.step(f"Reading the answer ({len(answer):,} characters)")
         try:
             patch, note = parse_answer_full(answer, allow_message=chat)
             message = note or message
             if chat and not patch:
                 rounds.append({"n": n, "ok": True, "at": db.now(), "problems": [],
                                "message_only": True})
+                if pg:
+                    pg.step("The answer is a message: the draft is not changed", "ok")
                 if on_round:
                     on_round(rounds)
                 break
@@ -284,12 +311,16 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
             rec = {"n": n, "ok": False, "at": db.now(),
                    "problems": [{"where": "answer", "message": msg}]}
             rounds.append(rec)
+            if pg:
+                pg.end("warn", msg)
             if on_round:
                 on_round(rounds)
             feedback = (f"- answer: {msg}\nReturn ONE JSON object with the keys of the "
                         "output contract and nothing else.")
             continue
         candidate = merge(current, shaped)
+        if pg:
+            pg.step("Building the package and checking it with SATOM's rules")
         try:
             _, data = package.build_from_project(candidate, assets, min_satom=min_satom)
             last = pack.check(data, snapshot, "builder")
@@ -301,12 +332,26 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
                "warnings": last.get("warnings") or []}
         rounds.append(rec)
         current = candidate
+        if pg:
+            probs = rec["problems"]
+            if rec["ok"]:
+                pg.end("ok", f"No problems ({len(rec['warnings'])} warning(s))")
+            else:
+                pg.end("warn", f"{len(probs)} problem(s):\n" + problems_text(last))
         if on_round:
             on_round(rounds)
         if rec["ok"]:
             break
         feedback = problems_text(last)
     ok = bool(rounds and rounds[-1]["ok"])
+    if pg:
+        if ok and rounds[-1].get("message_only"):
+            pass
+        elif ok:
+            pg.step("Done: the draft passes SATOM's rules. Save (or Apply) to keep it.", "ok")
+        elif rounds:
+            pg.step(f"Stopped after {len(rounds)} round(s) with problems left: they are listed, "
+                    "never fixed silently.", "warn")
     return {"ok": ok, "rounds": rounds,
             "project": current if current is not project else None, "check": last,
             "message": message}
@@ -315,9 +360,37 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
 # --------------------------------------------------------------------------
 # background jobs (state in SQLite, polled via /api/jobs/<id>)
 # --------------------------------------------------------------------------
+def progress_saver(conn, table: str, ref):
+    """``save(snapshot)`` for :class:`progress.Progress`: one row per job
+    (``job_progress``) or chat reply (``chat_progress``)."""
+    col = {"job_progress": "job_id", "chat_progress": "message_id"}[table]
+
+    def save(snap: dict) -> None:
+        conn.execute(f"INSERT INTO {table} ({col}, data, updated_at) VALUES (?,?,?) "
+                     f"ON CONFLICT({col}) DO UPDATE SET data = excluded.data, "
+                     "updated_at = excluded.updated_at", (ref, db.dumps(snap), db.now()))
+    return save
+
+
+def load_progress(conn, table: str, ref) -> dict | None:
+    col = {"job_progress": "job_id", "chat_progress": "message_id"}[table]
+    row = conn.execute(f"SELECT data FROM {table} WHERE {col} = ?", (ref,)).fetchone()
+    return with_now(db.loads(row["data"], None) if row else None)
+
+
+def with_now(progress):
+    """The server's clock at answer time: the page times the wait from it
+    (while the model reads the request nothing streams, so nothing is saved)."""
+    if isinstance(progress, dict):
+        progress["server_now"] = db.now()
+    return progress
+
+
 def start_job(app, *, project_id: int, user_id: int, work) -> str:
-    """Run ``work(job_id, conn, update)`` in a daemon thread. ``update(rounds)``
-    persists progress. -> the job id."""
+    """Run ``work(job_id, conn, update, progress)`` in a daemon thread.
+    ``update(rounds)`` persists the rounds, ``progress`` (a
+    :class:`progress.Progress`) what the job is doing. -> the job id."""
+    from .progress import Progress
     job_id = uuid.uuid4().hex
     with db.session(app.config["DB_PATH"]) as conn:
         t = db.now()
@@ -330,8 +403,9 @@ def start_job(app, *, project_id: int, user_id: int, work) -> str:
             def update(rounds):
                 conn.execute("UPDATE jobs SET rounds = ?, updated_at = ? WHERE id = ?",
                              (db.dumps(rounds), db.now(), job_id))
+            pg = Progress(progress_saver(conn, "job_progress", job_id))
             try:
-                res = work(job_id, conn, update)
+                res = work(job_id, conn, update, pg)
                 conn.execute("UPDATE jobs SET status = 'done', rounds = ?, result = ?, "
                              "error = ?, updated_at = ? WHERE id = ?",
                              (db.dumps(res["rounds"]), db.dumps(res), res.get("error", ""),
@@ -342,6 +416,7 @@ def start_job(app, *, project_id: int, user_id: int, work) -> str:
                         "RulesError", "SatomError", "NotReady"):
                     app.logger.error("generation job %s failed: %s", job_id,
                                      redact(traceback.format_exc()))
+                pg.step("Failed: " + redact(msg)[:300], "bad")
                 conn.execute("UPDATE jobs SET status = 'failed', error = ?, updated_at = ? "
                              "WHERE id = ?", (redact(msg)[:2000], db.now(), job_id))
 
@@ -351,9 +426,9 @@ def start_job(app, *, project_id: int, user_id: int, work) -> str:
     return job_id
 
 
-def job_answer(row) -> dict:
+def job_answer(row, progress: dict | None = None) -> dict:
     res = db.loads(row["result"], {}) or {}
-    return {"id": row["id"], "status": row["status"],
+    return {"id": row["id"], "status": row["status"], "progress": progress,
             "rounds": db.loads(row["rounds"], []) or [],
             "error": row["error"] or "",
             "ok": bool(res.get("ok")) if row["status"] == "done" else False,

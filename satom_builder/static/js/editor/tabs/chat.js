@@ -5,9 +5,11 @@
  * reaches the project only with "Apply to the project" (a normal save: the
  * previous draft stays as a revision). */
 import { h, clear, field, textarea, select, button, iconButton, badge, card, empty, say } from "../ui.js";
+import { renderActivity, clock } from "../activity.js";
 
 const S = { pid: null, chats: null, chat: null, current: null, profiles: null, pending: [], timer: null, rounds: 3, profile: "" };
 const KEY = (pid) => `sb-chat-${pid}`;
+const OPEN_ACT = new Set();      // finished replies whose activity the author opened
 const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,.txt,.md,.json,.csv,.tsv,.yaml,.yml,.xml,.log,.py,.js,.css,.html,.jinja,.j2,.sql,.ini,.conf,.cfg,.toml,.sh";
 
 function when(ts) { return ts ? new Date(ts * 1000).toLocaleString() : ""; }
@@ -50,7 +52,19 @@ function messageView(ctx, m, rerender) {
   const kids = [h("div", { class: "ed-msg-meta" }, "Assistant", m.profile ? " · " + m.profile : "", " · ", when(m.updated_at), " ",
     m.status === "running" ? badge("writing…", "info") : m.status === "failed" ? badge("failed", "danger") : null,
     m.applied_at ? badge("applied", "success") : null)];
-  if (m.status === "running") kids.push(h("div", { class: "ed-msg-text text-muted", text: (m.rounds || []).length ? `Round ${(m.rounds || []).length} checked; repairing…` : "Writing the reply. You can leave this page: it goes on, and it is here when you come back." }));
+  if (m.status === "running") {
+    kids.push(h("div", { class: "ed-msg-text text-muted", text: "Working on the reply. You can leave this page: it goes on, and it is here when you come back." }));
+    kids.push(renderActivity(h("div", { id: `chat-act-${m.id}` }), m.progress, { key: `chat-${m.id}`, running: true }));
+  } else if (m.progress && (m.progress.steps || []).length) {
+    const steps = m.progress.steps;
+    const took = steps[steps.length - 1].at - m.progress.started;
+    const d = h("details", { class: "ed-act-wrap", id: `chat-act-${m.id}` },
+      h("summary", { text: `What it did (${steps.length} steps, ${clock(took)})` }));
+    d.open = OPEN_ACT.has(m.id);
+    d.addEventListener("toggle", () => { if (d.open) OPEN_ACT.add(m.id); else OPEN_ACT.delete(m.id); });
+    d.appendChild(renderActivity(h("div"), m.progress, { key: `chat-${m.id}`, running: false }));
+    kids.push(d);
+  }
   if (m.status === "failed") kids.push(h("div", { class: "ed-msg-text ed-tone-bad", text: m.error || "The reply failed." }));
   if (m.status === "done") kids.push(h("div", { class: "ed-msg-text", text: m.content }));
   const rounds = (m.rounds || []).filter((r) => !r.message_only);

@@ -5,8 +5,38 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- **Generate and the assistant show what the AI is doing, as it happens.**
+  Requested: "it must show what it is doing, not just say generating: that is
+  useless, you cannot see beyond it". Both adapters now stream: the
+  OpenAI-compatible one over server-sent events (`stream: true`; a server that
+  answers in one JSON body still works), with the reasoning that Ollama, vLLM
+  and DeepSeek send apart (`delta.reasoning` / `reasoning_content`) or inside
+  `<think>`; the Anthropic one from the SDK's stream events, asking for
+  `thinking.display: "summarized"` on the models whose thinking is on by
+  default (Claude Opus 5.5 and its families; the default "omitted" streams
+  empty thinking). Under the Generate dialog and under each assistant reply:
+  - a live line: round, model, phase (reading the request -- timed even
+    before the first token, from the server's clock -- thinking, writing,
+    finished), tokens, tokens per second, time to first token, elapsed;
+  - **What the model is thinking** and **What it is writing**, live;
+  - every step with its time and result: the author guide read from SATOM's
+    rules pack, the request sent (size, images, "with the problems to
+    fix"), the answer read, the package checked with SATOM's rules, the
+    problems found (listed on the step), the repair round, done or stopped.
+  The activity is stored (schema 5: `job_progress`, `chat_progress`), so
+  leaving the page loses nothing, and a finished reply keeps it under
+  "What it did". It holds what the model wrote, never the prompt or a secret.
+
 ### Fixed
 
+- **The installers said they were 0.1.6.** `install-satom-builder.sh` and
+  `satom-builder-setup.sh` of 0.2.0 and 0.3.0 printed "SATOM Builder 0.1.6",
+  stamped `.env` with it and warned "This installer is 0.1.6; the code is
+  0.3.0" on every installation: their version was not bumped at release
+  (`test_installer_versions_match_the_release` catches it; the releases did
+  not run it).
 - **An answer that restates `min_satom` or `format` no longer loses its
   round.** The author guide describes plugin.json, so a model (gpt-oss) added
   `"min_satom"` and the Builder refused the whole answer as "Unknown key(s)".

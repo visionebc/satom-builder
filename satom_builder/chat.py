@@ -29,6 +29,7 @@ import traceback
 
 from . import ai_loop, db
 from .package import sniff_image
+from .progress import Progress
 from .secrets_store import redact
 
 MAX_IMAGE = 5 * 1024 * 1024
@@ -98,9 +99,10 @@ def file_meta(row) -> dict:
             "size": row["size"]}
 
 
-def message_answer(row, files: dict | None = None) -> dict:
+def message_answer(row, files: dict | None = None, progress: dict | None = None) -> dict:
     ids = db.loads(row["files"], []) or []
     return {"id": row["id"], "role": row["role"], "content": row["content"],
+            "progress": progress,
             "files": [files[i] for i in ids if files and i in files] if files else ids,
             "status": row["status"], "rounds": db.loads(row["rounds"], []) or [],
             "has_draft": row["draft"] is not None, "applied_at": row["applied_at"],
@@ -113,10 +115,13 @@ def chat_answer(conn, chat) -> dict:
         "SELECT id, name, mime, kind, size FROM chat_files WHERE chat_id = ?", (chat["id"],))}
     msgs = conn.execute("SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY id",
                         (chat["id"],)).fetchall()
+    progress = {r["message_id"]: ai_loop.with_now(db.loads(r["data"], None)) for r in conn.execute(
+        "SELECT p.message_id, p.data FROM chat_progress p JOIN chat_messages m "
+        "ON m.id = p.message_id WHERE m.chat_id = ?", (chat["id"],))}
     return {"id": chat["id"], "project_id": chat["project_id"], "title": chat["title"],
             "profile_id": chat["profile_id"], "created_at": chat["created_at"],
             "updated_at": chat["updated_at"], "files": list(files.values()),
-            "messages": [message_answer(m, files) for m in msgs],
+            "messages": [message_answer(m, files, progress.get(m["id"])) for m in msgs],
             "running": any(m["status"] == "running" for m in msgs)}
 
 
@@ -175,8 +180,8 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
         title = conn.execute("SELECT title FROM chats WHERE id = ?", (chat_id,)).fetchone()["title"]
         conn.execute("UPDATE chats SET updated_at = ?, title = ? WHERE id = ?",
                      (t, title or text.strip().splitlines()[0][:80], chat_id))
-    author_text = conversation_text([dict(h) for h in history], text,
-                                    [dict(f) for f in files if f["kind"] == "text"])
+    text_files = [dict(f) for f in files if f["kind"] == "text"]
+    author_text = conversation_text([dict(h) for h in history], text, text_files)
     if test_schema:
         author_text += ("\n## The project's test database\n\n" + test_schema + "\n\nThe "
                         "author runs read-only SQLite SELECTs over it in the Database tab: "
@@ -188,11 +193,15 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
             def on_round(rounds):
                 conn.execute("UPDATE chat_messages SET rounds = ?, updated_at = ? WHERE id = ?",
                              (db.dumps(rounds), db.now(), mr))
+            pg = Progress(ai_loop.progress_saver(conn, "chat_progress", mr))
+            if text_files or images:
+                pg.step(f"Attached: {len(text_files)} text file(s) in the prompt, "
+                        f"{len(images)} image(s) sent as images", "ok")
             try:
                 res = ai_loop.run(adapter, pack, snap, project, author_text, assets,
                                   max_rounds=max_rounds, on_round=on_round,
                                   min_satom=str(snap.get("satom_version") or ""), chat=True,
-                                  images=images or None)
+                                  images=images or None, progress=pg)
                 draft = res.get("project")
                 note = res.get("message") or ""
                 if not note:
@@ -210,6 +219,7 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
                 if type(exc).__name__ not in ("AIError", "RulesError", "SatomError", "NotReady"):
                     app.logger.error("chat reply %s failed: %s", mr,
                                      redact(traceback.format_exc()[-2000:]))
+                pg.step("Failed: " + redact(msg)[:300], "bad")
                 conn.execute("UPDATE chat_messages SET status = 'failed', error = ?, "
                              "updated_at = ? WHERE id = ?", (redact(msg)[:2000], db.now(), mr))
             conn.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (db.now(), chat_id))

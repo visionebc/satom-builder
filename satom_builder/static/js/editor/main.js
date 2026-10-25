@@ -7,6 +7,7 @@ import * as M from "./model.js";
 import { clone, deepEqual } from "./util.js";
 import { resolveTarget, tabsFor } from "./where.js";
 import { computeChoices } from "./choices.js";
+import { renderActivity } from "./activity.js";
 import * as F from "./fields.js";
 import formTab from "./tabs/form.js";
 import diagramTab from "./tabs/diagram.js";
@@ -455,7 +456,9 @@ function boot() {
       const r = await ctx.api.generate(ctx.project.id, $("ai-profile").value, $("ai-prompt").value, rounds);
       A.job = r.job_id;
       $("ai-generate").disabled = true;
-      say(st, "Generating…", "busy");
+      clear($("ai-sent"));
+      say(st, "Started: the steps and what the model writes show below as they happen.", "busy");
+      renderActivity($("ai-activity"), null, { key: "gen-" + A.job, running: true });
       poll();
     } catch (e) { say(st, e.message, "bad"); }
   });
@@ -464,6 +467,9 @@ function boot() {
     const st = $("ai-status");
     let j;
     try { j = await ctx.api.job(A.job); } catch (e) { say(st, e.message, "bad"); $("ai-generate").disabled = false; return; }
+    renderActivity($("ai-activity"), j.progress, { key: "gen-" + A.job, running: j.status === "running" });
+    const steps = (j.progress && j.progress.steps) || [];
+    if (j.status === "running" && steps.length) say(st, steps[steps.length - 1].text + "…", "busy");
     const box = clear($("ai-rounds-out"));
     (j.rounds || []).forEach((r) => box.appendChild(h("li", null, badge(`round ${r.n}`, r.ok ? "success" : "warning"), " ", r.ok ? "no problems" : `${(r.problems || []).length} problem(s)`,
       (r.problems || []).length ? h("ul", null, r.problems.map((p) => h("li", { text: (p.where ? p.where + ": " : "") + (p.message || p) }))) : null)));

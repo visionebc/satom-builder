@@ -192,6 +192,17 @@ MIGRATIONS: list[list[str]] = [
             updated_at REAL NOT NULL)""",
         "CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat_id, id)",
     ],
+    # 5 -- what an AI job is doing (steps, live thinking/answer): progress.py
+    [
+        """CREATE TABLE IF NOT EXISTS job_progress (
+            job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+            data TEXT NOT NULL,
+            updated_at REAL NOT NULL)""",
+        """CREATE TABLE IF NOT EXISTS chat_progress (
+            message_id INTEGER PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,
+            data TEXT NOT NULL,
+            updated_at REAL NOT NULL)""",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
