@@ -1,0 +1,31 @@
+SATOM Builder
+Copyright 2026 Vision EBC and the SATOM Builder contributors
+
+This product is licensed under the Elastic License 2.0 (see LICENSE).
+
+------------------------------------------------------------------------
+CODE SHARED WITH SATOM
+------------------------------------------------------------------------
+The installer and the update system (installers/, deploy/) reuse code
+from SATOM, the sister product by the same licensor, under the same
+license. Every vendored file and function is listed, with its source
+path and the SATOM revision it was taken from, in deploy/VENDORED.md.
+Nothing is imported from SATOM at runtime.
+
+------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+------------------------------------------------------------------------
+Python dependencies are declared in requirements.txt and, for offline
+installs and update packages, staged as wheels inside the bundle or the
+package. They are not modified; each retains the license published by
+its author. Operating-system packages staged in an offline bundle
+(.deb / .rpm) are unmodified copies of the distribution's own artefacts
+and remain under the distribution's terms.
+
+------------------------------------------------------------------------
+TRADEMARK NOTICE
+------------------------------------------------------------------------
+"SATOM" and "SATOM Builder" are coined marks of this project. The Elastic
+License 2.0 grants you limited rights to the software; it does NOT grant
+any right to use those names or logos for your own products or forks
+except as permitted by trademark law (nominative/fair use).
