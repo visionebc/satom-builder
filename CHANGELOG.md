@@ -56,6 +56,18 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   the editor (`#ai=<thread>`) and follows a Generate that still works.
   Schema 7 (`job_turns`) keeps each request; `GET /api/projects/<id>/ai-history`
   answers the caller's own conversations on that project only.
+- **Generate says what it built and what it left out.** In the lab a request
+  for a DDI reservation and a FortiWeb SPO came back as an IP owner lookup
+  that passed every check: the model had replaced the request with something
+  easier, and nothing told the author. Generate now asks the model for a
+  `message` saying what it built, which parts of the request it covers and
+  which it left out and why, and not to swap the request for an easier
+  plugin; a request that cannot be built at all is answered with the message
+  alone and the draft is not changed. The note is shown when the job ends
+  (editor and project page), as a step of the activity and in the
+  conversation history (which also feeds the next turn). The activity opens
+  with **Your request**, and a repair round repeats the author's request
+  after the problems, so it is the last thing the model reads.
 
 ### Changed
 

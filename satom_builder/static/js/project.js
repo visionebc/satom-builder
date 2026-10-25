@@ -228,6 +228,9 @@
       out.appendChild(d);
     });
     if (job.error) { out.appendChild(el('div', {'class': 'fw-alert fw-alert-danger', text: job.error})); }
+    if (job.message) {
+      out.appendChild(el('div', {'class': 'sb-help mb-2 sb-ai-note'}, [el('strong', {text: 'The AI says: '}), job.message]));
+    }
     if (job.status === 'done' && job.project) {
       lastJobProject = job.project;
       var msg = job.ok ? 'The generated draft passes SATOM\'s rules.' :

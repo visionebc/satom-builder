@@ -637,7 +637,10 @@ function boot() {
       ctx.changed();
       keepFocus(() => renderActive());
     }
-    const msg = `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".") + tail;
+    const said = j.message ? " The AI says: " + j.message : "";
+    const msg = (last && last.message_only && !j.project
+      ? "The AI answered without changing the draft." + said
+      : `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".") + tail + said);
     say(st, msg, last && !last.ok ? "info" : "ok");
     ctx.say(msg, last && !last.ok ? "info" : "ok");
     A.done = last && !last.ok ? "warn" : "ok";

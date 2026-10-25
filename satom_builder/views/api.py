@@ -438,7 +438,7 @@ def generate_preview(pid):
     if err:
         return err
     proj = projects.to_api(db.get(), row)
-    system, user = ai_loop.build_prompt(guide, snap, proj, author_text)
+    system, user = ai_loop.build_prompt(guide, snap, proj, author_text, request=prompt)
     return {"system": system, "user": user,
             "bytes": len(system.encode("utf-8")) + len(user.encode("utf-8")),
             "sends": ["author guide", "schema", "draft", "your text"],
@@ -479,7 +479,7 @@ def generate(pid):
     def work(job_id, jconn, update, progress):
         return ai_loop.run(adapter, pack, snap, proj, author_text, assets,
                            max_rounds=max_rounds, on_round=update, min_satom=min_satom,
-                           progress=progress)
+                           progress=progress, request=prompt)
 
     job_id = ai_loop.start_job(current_app._get_current_object(), project_id=pid,
                                user_id=g.user.id, work=work,

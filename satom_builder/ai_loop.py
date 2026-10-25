@@ -75,6 +75,22 @@ the author only asks a question and nothing should change, answer with
 """
 
 
+#: Generate (not the chat): what the model built against what was asked. A
+#: request it cannot build was swapped for an easier plugin in silence (lab,
+#: 2026-10-25: an SPO request came back as an IP owner lookup, 0 problems).
+GENERATE_CONTRACT = """\
+# Report to the author (SATOM Builder)
+
+Build what the author asks for. Do not replace the request with a smaller or
+different plugin because it is easier to get past SATOM's checks. Add the key
+"message" to your JSON object: a short note to the author, in the author's
+language, saying what you built, which parts of the request it covers, and
+which parts you left out and why (for example a step SATOM's rules do not
+allow). When the request cannot be built at all, answer with
+{"message": "..."} alone and say why: the draft is then not changed.
+"""
+
+
 class ParseError(ValueError):
     pass
 
@@ -175,8 +191,12 @@ def draft_for_prompt(project: dict) -> dict:
 
 
 def build_prompt(author_guide: str, snapshot: dict, project: dict, author_text: str,
-                 feedback: str = "", chat: bool = False) -> tuple[str, str]:
-    system = author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT + ("\n" + CHAT_CONTRACT if chat else "")
+                 feedback: str = "", chat: bool = False, request: str = "") -> tuple[str, str]:
+    """*request* is the author's own new message (*author_text* may wrap it
+    in the conversation so far): a repair round repeats it after the
+    problems, so the last thing the model reads is what to build."""
+    system = (author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT + "\n"
+              + (CHAT_CONTRACT if chat else GENERATE_CONTRACT))
     compact = {"sort_keys": True, "ensure_ascii": False, "separators": (",", ":")}
     user = ("# Target SATOM (names and shapes only)\n\n```json\n"
             + json.dumps(target_summary(snapshot, str(project.get("kind") or "app")), **compact)
@@ -185,6 +205,9 @@ def build_prompt(author_guide: str, snapshot: dict, project: dict, author_text: 
             + "\n```\n\n# What the author wants\n\n" + author_text.strip() + "\n")
     if feedback:
         user += "\n# Fix these problems in your previous answer\n\n" + feedback + "\n"
+        user += ("\n# Still what the author asked for\n\nFix the problems without dropping "
+                 "any part of this request; whatever you cannot build, say in \"message\".\n\n"
+                 + (request or author_text).strip() + "\n")
     return system, user
 
 
@@ -253,14 +276,18 @@ def problems_text(result: dict) -> str:
 # --------------------------------------------------------------------------
 def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: list,
         max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "",
-        chat: bool = False, images: list | None = None, progress=None) -> dict:
+        chat: bool = False, images: list | None = None, progress=None,
+        request: str = "") -> dict:
     """-> {"ok", "rounds": [...], "project": candidate, "check": last result,
-    "message": the model's note (chat)}. Raises AIError (provider) and
-    RulesError (pack). In a chat (*chat*) the model may answer with a message
-    alone: nothing is checked and the draft is unchanged. *progress* (a
-    :class:`progress.Progress`) records every step and streams the model's
-    thinking and answer as they arrive."""
+    "message": the model's note}. Raises AIError (provider) and RulesError
+    (pack). The model may answer with a message alone: nothing is checked and
+    the draft is unchanged. *request* is the author's own new message
+    (Generate): the first step of the activity, and repeated in repair
+    rounds. *progress* (a :class:`progress.Progress`) records every step and
+    streams the model's thinking and answer as they arrive."""
     pg = progress
+    if pg and request.strip():
+        pg.step("Your request", "ok", detail=request.strip())
     if pg:
         pg.step("Reading the author guide from SATOM's rules pack "
                 f"(SATOM {getattr(pack, 'satom_version', '') or '?'})")
@@ -273,7 +300,8 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
     last = None
     message = ""
     for n in range(1, max_rounds + 1):
-        system, user = build_prompt(guide, snapshot, current, author_text, feedback, chat=chat)
+        system, user = build_prompt(guide, snapshot, current, author_text, feedback, chat=chat,
+                                    request=request)
         kw = {"images": images} if images else {}
         if pg:
             size = len(system.encode("utf-8")) + len(user.encode("utf-8"))
@@ -295,10 +323,14 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
             pg.model_done()
             pg.step(f"Reading the answer ({len(answer):,} characters)")
         try:
-            patch, note = parse_answer_full(answer, allow_message=chat)
+            patch, note = parse_answer_full(answer, allow_message=True)
             message = note or message
-            if chat and not patch:
-                rounds.append({"n": n, "ok": True, "at": db.now(), "problems": [],
+            if not patch and (chat or note):
+                # after a round with problems, a message changes nothing:
+                # those problems are still there
+                kept = last if last and not last.get("ok") else None
+                rounds.append({"n": n, "ok": kept is None, "at": db.now(),
+                               "problems": (kept or {}).get("problems") or [],
                                "message_only": True})
                 if pg:
                     pg.step("The answer is a message: the draft is not changed", "ok")
@@ -344,6 +376,8 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
             break
         feedback = problems_text(last)
     ok = bool(rounds and rounds[-1]["ok"])
+    if pg and message and not chat:
+        pg.step("What the AI says it built and left out", "ok", detail=message)
     if pg:
         if ok and rounds[-1].get("message_only"):
             pass
@@ -415,13 +449,16 @@ def turn_outcome(row) -> str:
     rounds = db.loads(row["rounds"], []) or []
     res = db.loads(row["result"], {}) or {}
     last = rounds[-1] if rounds else {}
+    note = (res.get("message") or "").strip()
     if last.get("message_only"):
-        return "answered: " + (res.get("message") or "")[:500]
+        return "answered: " + note[:500]
+    said = (" -- the AI says: " + note[:500]) if note else ""
     if last.get("ok"):
-        return f"a draft that passes SATOM's rules ({len(rounds)} round(s))"
+        return f"a draft that passes SATOM's rules ({len(rounds)} round(s))" + said
     probs = last.get("problems") or []
     return (f"a draft with {len(probs)} problem(s) left: "
-            + "; ".join(f"{p.get('where', '?')}: {p.get('message', '')}" for p in probs[:3])[:600])
+            + "; ".join(f"{p.get('where', '?')}: {p.get('message', '')}" for p in probs[:3])[:600]
+            + said)
 
 
 def history_text(turns: list, new_prompt: str) -> str:
@@ -523,6 +560,7 @@ def job_answer(row, progress: dict | None = None) -> dict:
             "rounds": db.loads(row["rounds"], []) or [],
             "error": row["error"] or "",
             "ok": bool(res.get("ok")) if row["status"] == "done" else False,
+            "message": (res.get("message") or "") if row["status"] == "done" else "",
             "project": res.get("project") if row["status"] == "done" else None}
 
 
