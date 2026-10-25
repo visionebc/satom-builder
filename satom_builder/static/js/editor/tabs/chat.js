@@ -55,15 +55,6 @@ function messageView(ctx, m, rerender) {
   if (m.status === "running") {
     kids.push(h("div", { class: "ed-msg-text text-muted", text: "Working on the reply. You can leave this page: it goes on, and it is here when you come back." }));
     kids.push(renderActivity(h("div", { id: `chat-act-${m.id}` }), m.progress, { key: `chat-${m.id}`, running: true }));
-  } else if (m.progress && (m.progress.steps || []).length) {
-    const steps = m.progress.steps;
-    const took = steps[steps.length - 1].at - m.progress.started;
-    const d = h("details", { class: "ed-act-wrap", id: `chat-act-${m.id}` },
-      h("summary", { text: `What it did (${steps.length} steps, ${clock(took)})` }));
-    d.open = OPEN_ACT.has(m.id);
-    d.addEventListener("toggle", () => { if (d.open) OPEN_ACT.add(m.id); else OPEN_ACT.delete(m.id); });
-    d.appendChild(renderActivity(h("div"), m.progress, { key: `chat-${m.id}`, running: false }));
-    kids.push(d);
   }
   if (m.status === "failed") kids.push(h("div", { class: "ed-msg-text ed-tone-bad", text: m.error || "The reply failed." }));
   if (m.status === "done") kids.push(h("div", { class: "ed-msg-text", text: m.content }));
@@ -96,6 +87,17 @@ function messageView(ctx, m, rerender) {
       } catch (e) { say(st, e.message, "bad"); }
     });
     kids.push(h("div", { class: "ed-inline" }, apply, show, st), box);
+  }
+  if (m.status !== "running" && m.progress && (m.progress.steps || []).length) {
+    // after the reply: the answer first, how it was reached on demand
+    const steps = m.progress.steps;
+    const took = steps[steps.length - 1].at - m.progress.started;
+    const d = h("details", { class: "ed-act-wrap", id: `chat-act-${m.id}` },
+      h("summary", { text: `What it did (${steps.length} steps, ${clock(took)})` }));
+    d.open = OPEN_ACT.has(m.id);
+    d.addEventListener("toggle", () => { if (d.open) OPEN_ACT.add(m.id); else OPEN_ACT.delete(m.id); });
+    d.appendChild(renderActivity(h("div"), m.progress, { key: `chat-${m.id}`, running: false }));
+    kids.push(d);
   }
   return h("div", { class: "ed-msg ed-msg-ai", id: `chat-m-${m.id}` }, kids);
 }
