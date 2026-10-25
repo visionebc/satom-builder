@@ -529,7 +529,14 @@ pf_https_ok() {   # 0 reachable, 1 not, 2 no tool
     if pf_have curl; then curl -fsS -m 8 -o /dev/null "$1" 2>/dev/null; return $?; fi
     local py="" c
     for c in python3.12 python3.11 python3; do pf_have "$c" && { py="$c"; break; }; done
-    [ -n "$py" ] || return 2
+    if [ -z "$py" ]; then
+        # A bare image has neither curl nor python yet (step 2 installs them):
+        # a TCP connect to the host's :443 is still a real egress answer.
+        local h="${1#https://}"; h="${h%%/*}"
+        pf_have timeout || return 2
+        timeout 8 bash -c ": > /dev/tcp/${h}/443" 2>/dev/null && return 0
+        return 1
+    fi
     "$py" -c 'import sys,urllib.request
 try: urllib.request.urlopen(sys.argv[1], timeout=8)
 except Exception: sys.exit(1)' "$1" 2>/dev/null
@@ -628,7 +635,11 @@ preflight() {
         fi
     fi
     if [ $OFFLINE -eq 0 ]; then
-        pf_https_ok "https://pypi.org/simple/"; case $? in
+        # `|| _rc=$?`, never a bare call: under `set -e` a probe that answers
+        # "no tool" (2) would end the preflight silently.
+        local _rc=0
+        pf_https_ok "https://pypi.org/simple/" || _rc=$?
+        case $_rc in
             0) ok "PyPI egress verified (needed for the venv)" ;;
             1) pf_bad "No access to PyPI -- the venv CANNOT be built online. Use the OFFLINE bundle or open HTTPS egress." ;;
             *) pf_warn "Neither curl nor python3: cannot check Internet egress" ;;

@@ -207,6 +207,9 @@ check_system() {
     have tar || die "tar is missing"
     if have curl && curl -fsS -o /dev/null --connect-timeout 8 https://pypi.org/simple/ 2>/dev/null; then
         INTERNET=1; ok "Internet access (pypi.org) OK"
+    elif ! have curl && have timeout && timeout 8 bash -c ': > /dev/tcp/pypi.org/443' 2>/dev/null; then
+        # A bare image has no curl yet (the installer adds it): TCP :443 answers.
+        INTERNET=1; ok "Internet access (pypi.org:443 reachable; curl is installed in step 2)"
     else
         warn "No Internet access (or no curl yet): only the OFFLINE install is possible"
     fi

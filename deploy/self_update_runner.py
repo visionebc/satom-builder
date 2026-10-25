@@ -1216,6 +1216,10 @@ def package_change(req):
         written = up.extract_app_tree(app_tar, APP)
         st.step("install application tree", True, "%d file(s) from %s" % (len(written), name))
         stale = sorted(tracked_now - set(written))
+        if tracked_now and len(stale) > max(20, len(tracked_now) // 2):
+            raise RuntimeError("refusing to remove %d of %d tracked files: the package's "
+                               "app.tar.gz does not look like this product's tree"
+                               % (len(stale), len(tracked_now)))
         for rel in stale:
             if _link_below(APP, Path(rel).parent):
                 continue
@@ -1350,16 +1354,45 @@ def rollback_job(req):
             raise Refused("refusing to roll back from a runner the service account "
                           "can rewrite")
         st.step("runner integrity", True, "running root-owned")
-        points = [p for p in rollback_points() if p.get("state") == "applied"]
+        everything = rollback_points()
         if req["point"]:
-            points = [p for p in points if p.get("id") == req["point"]]
+            points = [p for p in everything if p.get("id") == req["point"]]
             if not points:
-                raise Refused("no applied rollback point %r" % req["point"])
-        if not points:
-            raise Refused("there is no rollback point: no update package has been "
-                          "applied on this node since it was installed")
+                raise Refused("no rollback point %r" % req["point"])
+        else:
+            points = [p for p in everything if p.get("state") == "applied"]
+            if not points:
+                raise Refused("there is no rollback point: no update package has been "
+                              "applied on this node since it was installed")
         point = points[0]
         pdir = Path(point["_dir"])
+        if point.get("state") in ("failed", "rolled-back"):
+            # The code is already back at from_version (the failed apply rolled
+            # itself back, or an earlier rollback did): only the DATABASE copy
+            # taken before that update can still be restored.
+            if not req["restore_db"]:
+                raise Refused("rollback point %s is %s: its code is already rolled back; "
+                              "only --restore-db applies to it" % (point["id"], point["state"]))
+            if point.get("from_version") != cur:
+                raise Refused("rollback point %s holds the database of %s, but this node "
+                              "runs %s" % (point["id"], point.get("from_version"), cur))
+            st.d["to_version"] = cur
+            st.step("select rollback point", True, "%s (%s): database copy taken before "
+                    "%s -> %s" % (point["id"], point["state"], point.get("from_version"),
+                                  point.get("to_version")))
+            st.begin("stop service")
+            stopped = True
+            subprocess.run(["systemctl", "stop", SERVICE], timeout=180)
+            st.step("stop service", True, SERVICE)
+            restore_databases(pdir, point.get("databases") or [], st)
+            restart_service(st, cur or None)
+            man = _rb_manifest(pdir)
+            man["db_restored_at"] = now()
+            _rb_save_manifest(pdir, man)
+            st.finish("done", to_version=cur, rollback_point=point["id"])
+            return
+        if point.get("state") != "applied":
+            raise Refused("rollback point %s is %s" % (point["id"], point.get("state")))
         if point.get("to_version") != cur:
             raise Refused("rollback point %s returns %s -> %s, but this node runs %s; "
                           "roll back the newer update first"

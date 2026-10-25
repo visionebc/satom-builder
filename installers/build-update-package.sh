@@ -112,9 +112,12 @@ REQS="$STAGE/requirements.txt"
 tar -xzOf "$PKG/app.tar.gz" requirements.txt > "$REQS" 2>/dev/null \
   || tar -xzOf "$PKG/app.tar.gz" ./requirements.txt > "$REQS" \
   || { echo "!!! app.tar.gz has no requirements.txt" >&2; exit 1; }
+# Listed ONCE into a file: `tar -tzf | grep -q` under pipefail fails whenever
+# grep exits early and tar takes SIGPIPE.
+tar -tzf "$PKG/app.tar.gz" > "$STAGE/app.list"
 for must in deploy/self_update_runner.py deploy/update_package.py deploy/install-runner.sh \
             deploy/install-cli.sh deploy/satom-builder.service; do
-  tar -tzf "$PKG/app.tar.gz" | grep -qxE "(\./)?${must}" \
+  grep -qxE "(\./)?${must}" "$STAGE/app.list" \
     || { echo "!!! app.tar.gz lacks ${must}: a node could not refresh its root-side files" >&2; exit 1; }
 done
 

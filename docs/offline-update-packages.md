@@ -193,6 +193,16 @@ files; the database only with `--restore-db` (data written since is lost). It is
 refused when the node's version is not the one that update installed. The
 newest three rollback points are kept.
 
+When an apply FAILED (it rolled its code and venv back by itself) or was
+already rolled back, its point still holds the database copy taken before it:
+
+```bash
+sudo satom-builder rollback --point <id> --restore-db --yes
+```
+
+restores only that database (the code is already at the point's starting
+version, which must be the version the node runs).
+
 A **downgrade** with a package (an older signed package) needs
 `allow_downgrade: true` (`satom-builder update apply --allow-downgrade`).
 

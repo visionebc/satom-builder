@@ -46,7 +46,7 @@ import os
 import re
 import stat
 import tarfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 SCHEMA = "satom-builder.update-package/1"
 PRODUCT = "satom-builder"
@@ -453,7 +453,10 @@ def extract_app_tree(app_tar, dest) -> list:
                 raise PackageError("app tree member %s has unsupported type" % name)
             members.append(m)
             if m.isfile():
-                written.append(name)
+                # Normalised (``./x`` -> ``x``): the caller compares this list
+                # with ``git ls-files``, and a spelling difference would make
+                # every tracked file look dropped. [SATOM Builder fix]
+                written.append(str(PurePosixPath(name)))
         _check_unpacked_size(members, "app tree")
         _refuse_links_on_disk(dest, members)
         _extractall(tf, dest, members)
