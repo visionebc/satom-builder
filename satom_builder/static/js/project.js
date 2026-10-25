@@ -152,8 +152,18 @@
   function renderRounds(job) {
     var out = $('sb-rounds-out');
     clear(out);
-    var status = el('p', {'class': 'mb-2'}, [el('strong', {text: 'Status: '}), job.status]);
+    // what the job is doing (editor/activity.js, as in the editor's dialog):
+    // the current step next to the status, then the live line, what the
+    // model thinks and writes, and every step
+    var steps = (job.progress && job.progress.steps) || [];
+    var current = job.status === 'running' && steps.length ? steps[steps.length - 1].text : '';
+    var status = el('p', {'class': 'mb-2'}, [el('strong', {text: 'Status: '}), job.status + (current ? ' \u2014 ' + current : '')]);
     out.appendChild(status);
+    if (window.SBActivity) {
+      var act = el('div', {'id': 'sb-activity'});
+      out.appendChild(act);
+      window.SBActivity.renderActivity(act, job.progress, {key: 'job-' + job.id, running: job.status === 'running'});
+    }
     (job.rounds || []).forEach(function (rd) {
       var d = el('div', {'class': 'sb-round ' + (rd.ok ? 'ok' : 'bad')}, [
         el('div', {}, [el('strong', {text: 'Round ' + rd.n + ' '}), badge(rd.ok, rd.ok ? 'passes the rules' : (rd.problems || []).length + ' problem(s)')])]);

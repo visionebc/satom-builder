@@ -156,5 +156,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/activity-global.js') }}?v={{ app_version }}"{% if csp_nonce is defined %} nonce="{{ csp_nonce }}"{% endif %}></script>
 <script src="{{ url_for('static', filename='js/project.js') }}?v={{ app_version }}"></script>
 {% endblock %}
