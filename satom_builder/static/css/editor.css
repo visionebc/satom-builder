@@ -268,7 +268,7 @@ body.ed-checks-open .ed-checks { display: block; }
 }
 
 /* Database tab: the test data as tables, their relations, a SQL console */
-.db-diagram { position: relative; min-width: 100%; padding: 4px; }
+.db-diagram { position: relative; min-width: 100%; padding: 4px 4px 4px 30px; }  /* the left gutter carries the lines between tables of one column */
 .db-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
 .db-line { fill: none; stroke: var(--ed-muted); stroke-width: 1.4; opacity: .55; }
 .db-line.is-on { stroke: var(--ed-accent); stroke-width: 2.2; opacity: 1; }

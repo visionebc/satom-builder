@@ -36,12 +36,21 @@ function drawLines(wrap) {
     const b = wrap.querySelector(`[data-col="${CSS.escape(r.to + "." + r.to_column)}"]`);
     if (!a || !b) return;
     const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-    const right = ra.left < rb.left;
-    const x1 = (right ? ra.right : ra.left) - box.left, y1 = ra.top + ra.height / 2 - box.top;
-    const x2 = (right ? rb.left : rb.right) - box.left, y2 = rb.top + rb.height / 2 - box.top;
-    const bend = Math.max(30, Math.abs(x2 - x1) / 2) * (right ? 1 : -1);
+    const y1 = ra.top + ra.height / 2 - box.top, y2 = rb.top + rb.height / 2 - box.top;
+    let x1, x2, d;
+    if (ra.left < rb.right && rb.left < ra.right) {
+      // same column: out of the left edge and back, never across another box
+      x1 = ra.left - box.left; x2 = rb.left - box.left;
+      const out = Math.min(x1, x2) - 14 - Math.min(10, Math.abs(y2 - y1) / 40);
+      d = `M ${x1} ${y1} C ${out} ${y1}, ${out} ${y2}, ${x2} ${y2}`;
+    } else {
+      const right = ra.left < rb.left;
+      x1 = (right ? ra.right : ra.left) - box.left; x2 = (right ? rb.left : rb.right) - box.left;
+      const bend = Math.max(30, Math.abs(x2 - x1) / 2) * (right ? 1 : -1);
+      d = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    }
     const p = document.createElementNS(SVG, "path");
-    p.setAttribute("d", `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`);
+    p.setAttribute("d", d);
     const on = S.selected && (S.selected === r.from || S.selected === r.to);
     p.setAttribute("class", "db-line" + (on ? " is-on" : ""));
     svg.appendChild(p);
