@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Audit log — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-journal-text me-2"></i>Audit log</h1>
+  <form method="get" action="{{ url_for('admin.audit_page') }}" class="d-flex gap-2">
+    <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="user, action or object" aria-label="Filter">
+    <button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
+  </form></div>
+<div class="fw-card">
+  <table class="table fw-table table-sm mb-0 align-middle">
+    <thead><tr><th>When</th><th>User</th><th>Action</th><th>Object</th><th>Detail</th><th>From</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr><td class="text-nowrap">{{ m.when(r.at) }}</td><td>{{ r.username }}</td><td class="sb-mono">{{ r.action }}</td><td>{{ r.object }}</td>
+      <td class="sb-mono" style="max-width: 420px; word-break: break-word">{{ r.detail if r.detail != '{}' else '' }}</td><td class="sb-mono">{{ r.ip }}</td></tr>
+    {% else %}<tr><td colspan="6" class="sb-help">Nothing recorded{{ ' for this filter' if q }}.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="d-flex justify-content-between sb-help">
+  <span>{{ total }} entr{{ 'y' if total == 1 else 'ies' }}</span>
+  <span>{% if page > 1 %}<a href="{{ url_for('admin.audit_page', q=q or None, page=page - 1) }}">newer</a>{% endif %}
+    page {{ page }} / {{ pages }}
+    {% if page < pages %}<a href="{{ url_for('admin.audit_page', q=q or None, page=page + 1) }}">older</a>{% endif %}</span>
+</div>
+{% endblock %}

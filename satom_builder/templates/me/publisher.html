@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Publisher key — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-patch-check me-2"></i>Publisher key</h1></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p>This installation signs every package it builds with its own Ed25519 publisher key. A SATOM that has registered the public half under <em>Trusted publishers</em> treats those packages as signed: views and widgets land in <em>testing</em> instead of <em>draft</em>. A publisher can never sign <span class="sb-mono">code</span>.</p>
+  {% if info.error %}
+    <div class="fw-alert fw-alert-danger">{{ info.error }}</div>
+  {% elif not info.present %}
+    <div class="fw-alert fw-alert-warning">No publisher key on this installation yet ({{ key_path }}). Packages are built unsigned. The installer creates the key; an operator can also run <span class="sb-mono">python -m satom_builder.manage keygen-publisher</span> as root in the application directory.</div>
+  {% else %}
+  <table class="table sb-kv mb-0">
+    <tr><th>key_id</th><td><span class="sb-mono" id="sb-kid">{{ info.key_id }}</span> <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-sb-copy="#sb-kid">Copy</button></td></tr>
+    <tr><th>Public key (base64, raw 32 bytes)</th><td><span class="sb-mono" id="sb-pub">{{ info.public_key }}</span> <button type="button" class="btn btn-sm btn-link p-0 ms-2" data-sb-copy="#sb-pub">Copy</button></td></tr>
+    <tr><th>Algorithm</th><td>Ed25519 (<span class="sb-mono">plugin.sig</span> over <span class="sb-mono">plugin.json</span>)</td></tr>
+  </table>
+  {% endif %}
+</div></div>
+
+{% if info.present %}
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">Register on a SATOM target</h2></div>
+  <div class="fw-card-body">
+    <p class="sb-help">Registering calls SATOM's <span class="sb-mono">POST /api/v1/builder/publishers</span> with <strong>your</strong> token. SATOM accepts it only from a token with scope <span class="sb-mono">admin</span> whose owner is a <strong>super-admin</strong>. The call is idempotent: registering the same key again returns the existing key_id. A super-admin can also paste the public key above into SATOM by hand.</p>
+    {% for r in rows %}
+    <form method="post" action="{{ url_for('me.publisher_register', tid=r.t.id) }}" class="d-flex flex-wrap gap-2 align-items-center mb-2">
+      {{ m.csrf() }}
+      <strong style="min-width: 160px">{{ r.t.name }}</strong>
+      <input class="form-control form-control-sm" style="max-width: 260px" name="label" maxlength="80" value="SATOM Builder" aria-label="Label shown in SATOM">
+      <button class="btn btn-sm btn-fw-primary" type="submit" {{ 'disabled' if not r.has_token }}>Register on target</button>
+      {% if not r.has_token %}<span class="sb-help">add your token for this target first</span>{% endif %}
+    </form>
+    {% else %}
+    <p class="mb-0">No SATOM target exists yet.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

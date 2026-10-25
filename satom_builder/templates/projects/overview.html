@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ p.name }} — SATOM Builder{% endblock %}
+{% block content %}
+<div id="sb-project" data-pid="{{ p.id }}" data-kind="{{ p.kind }}" data-has-target="{{ '1' if target and has_token else '0' }}">
+<div class="fw-page-header">
+  <h1 class="fw-page-title"><i class="bi {{ p.icon }} me-2"></i>{{ p.name }} {{ m.kind_badge(p.kind) }}
+    <span class="sb-mono sb-help ms-2">{{ p.slug }} {{ p.version }}</span></h1>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-fw-primary" href="{{ url_for('editor.edit', pid=p.id) }}"><i class="bi bi-pencil-square me-1"></i>Open editor</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/api/projects/{{ p.id }}/package"><i class="bi bi-download me-1"></i>Download package</a>
+    <form method="post" action="{{ url_for('projects.bump', pid=p.id) }}" class="d-flex gap-1">
+      {{ m.csrf() }}
+      <select name="part" class="form-select form-select-sm" aria-label="Version part">
+        <option value="patch">patch</option><option value="minor">minor</option><option value="major">major</option>
+      </select>
+      <button class="btn btn-sm btn-outline-secondary" type="submit" title="Raise the version">Bump</button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3">
+<div class="col-xl-7">
+
+  <div class="fw-card">
+    <div class="fw-card-header"><h2 class="fw-card-title">SATOM</h2></div>
+    <div class="fw-card-body">
+      {% if not target %}
+        <div class="fw-alert fw-alert-warning">This project has no SATOM target: pick one in the project settings. Without a target there is no rules pack, so nothing can be validated.</div>
+      {% elif not has_token %}
+        <div class="fw-alert fw-alert-warning">You have no SATOM token for <strong>{{ target.name }}</strong>: add yours under <a href="{{ url_for('me.tokens') }}">My tokens</a>. Everything the Builder does there runs with your token, your RBAC and your ADOM.</div>
+      {% else %}
+        <p class="sb-help mb-2">Target <strong>{{ target.name }}</strong> ({{ target.base_url }}). Validation runs SATOM's own rules: locally from the rules pack, and again on SATOM.</p>
+      {% endif %}
+      <div class="sb-actions">
+        <button class="btn btn-sm btn-outline-primary" data-sb-action="check" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-check2-square me-1"></i>Validate locally</button>
+        <button class="btn btn-sm btn-outline-primary" data-sb-action="validate-remote" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-cloud-check me-1"></i>Validate on SATOM</button>
+      </div>
+
+      {% if p.kind == 'app' %}
+      <details class="mt-2">
+        <summary class="fw-form-section-title">Rehearse on SATOM</summary>
+        <p class="sb-help mt-2">Walks the app's diagram UNARMED on SATOM (write steps are recorded, not executed) with SATOM's existing stores, connections and secrets. Nothing is installed. Objects the package would create must exist there first.</p>
+        <div class="row g-2">
+          <div class="col-md-8"><label class="form-label" for="sb-inputs">Inputs (JSON object)</label>
+            <textarea class="form-control sb-mono" id="sb-inputs" rows="3">{}</textarea></div>
+          <div class="col-md-4"><label class="form-label" for="sb-answers">Answer "ask" steps with</label>
+            <select class="form-select" id="sb-answers"><option value="yes">yes</option><option value="no">no</option><option value="stop">stop (return the prompt)</option></select></div>
+        </div>
+        <button class="btn btn-sm btn-outline-primary mt-2" data-sb-action="rehearse" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-play-circle me-1"></i>Rehearse</button>
+      </details>
+      {% endif %}
+
+      <details class="mt-2">
+        <summary class="fw-form-section-title">Import into SATOM</summary>
+        <p class="sb-help mt-2">The same path as SATOM's own import page. It needs a token with scope <strong>admin</strong> whose owner is a SATOM super-admin. Connection secrets the package needs are typed here, relayed to SATOM once and never stored by the Builder.</p>
+        <div id="sb-secrets" class="mb-2"><p class="sb-help mb-1">Run a validation first to see which connection secrets the import needs.</p></div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="sb-downgrade">
+          <label class="form-check-label" for="sb-downgrade">Allow a downgrade (the package's version is lower than SATOM's copy)</label>
+        </div>
+        <button class="btn btn-sm btn-fw-primary" data-sb-action="import" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-box-arrow-in-right me-1"></i>Import</button>
+      </details>
+
+      <div id="sb-result" class="mt-3" aria-live="polite">
+        {% if last_check and last_check.result %}
+        <div class="sb-help mb-1">Last check ({{ last_check.source }}, {{ m.when(last_check.at) }}):
+          {% if last_check.result.ok %}<span class="fw-badge fw-badge-success">ok</span>{% else %}<span class="fw-badge fw-badge-danger">{{ (last_check.result.problems or [])|length }} problem(s)</span>{% endif %}</div>
+        {{ m.problems(last_check.result.problems) }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="fw-card">
+    <div class="fw-card-header"><h2 class="fw-card-title"><i class="bi bi-stars me-1"></i>Generate with AI</h2></div>
+    <div class="fw-card-body">
+      {% if not profiles %}
+        <p class="mb-0">No AI profile is enabled. {% if current_user.is_admin %}Add one under <a href="{{ url_for('admin.ai_page') }}">AI profiles</a>.{% else %}Ask an administrator to add one.{% endif %}</p>
+      {% else %}
+      <p class="sb-help">The model gets the rules pack's author guide, the target's schema (names and shapes), the current draft and your text. It never gets data rows or secrets. What it returns is validated with SATOM's rules; problems go back to it for up to the given number of rounds. Nothing is fixed silently, and nothing replaces your draft until you apply it.</p>
+      <div class="row g-2">
+        <div class="col-md-6"><label class="form-label" for="sb-profile">AI profile</label>
+          <select class="form-select" id="sb-profile">{% for pr in profiles %}<option value="{{ pr.id }}">{{ pr.name }} ({{ pr.model }})</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label" for="sb-rounds">Max rounds</label>
+          <input class="form-control" id="sb-rounds" type="number" min="1" max="6" value="3"></div>
+        <div class="col-12"><label class="form-label" for="sb-prompt">What do you want?</label>
+          <textarea class="form-control" id="sb-prompt" rows="4" maxlength="20000" placeholder="For example: an app with a form that asks for a hostname and a diagram that looks it up in the ddi connection..."></textarea></div>
+      </div>
+      <div class="sb-actions mt-2">
+        <button class="btn btn-sm btn-outline-secondary" data-sb-action="preview" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-eye me-1"></i>What will be sent</button>
+        <button class="btn btn-sm btn-fw-primary" data-sb-action="generate" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-magic me-1"></i>Generate</button>
+      </div>
+      <div id="sb-preview" class="mt-2"></div>
+      <div id="sb-rounds-out" class="mt-2" aria-live="polite"></div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+<div class="col-xl-5">
+
+  <div class="fw-card">
+    <div class="fw-card-header"><h2 class="fw-card-title">Project settings</h2></div>
+    <div class="fw-card-body">
+      <form method="post" action="{{ url_for('projects.settings', pid=p.id) }}" class="row g-2">
+        {{ m.csrf() }}
+        <div class="col-12"><label class="form-label" for="f-name">Name</label>
+          <input class="form-control" id="f-name" name="name" value="{{ p.name }}" maxlength="200" required></div>
+        <div class="col-md-6"><label class="form-label" for="f-slug">Slug</label>
+          <input class="form-control sb-mono" id="f-slug" name="slug" value="{{ p.slug }}" maxlength="80" required></div>
+        <div class="col-md-3"><label class="form-label" for="f-version">Version</label>
+          <input class="form-control sb-mono" id="f-version" name="version" value="{{ p.version }}" required></div>
+        <div class="col-md-3"><label class="form-label" for="f-icon">Icon</label>
+          <input class="form-control sb-mono" id="f-icon" name="icon" value="{{ p.icon }}" required></div>
+        <div class="col-12"><label class="form-label" for="f-target">SATOM target</label>
+          <select class="form-select" id="f-target" name="target_id">
+            <option value="">— none —</option>
+            {% for t in targets %}<option value="{{ t.id }}" {{ 'selected' if p.target_id == t.id }}>{{ t.name }}</option>{% endfor %}
+          </select></div>
+        <div class="col-12"><label class="form-label" for="f-desc">Description</label>
+          <textarea class="form-control" id="f-desc" name="description" maxlength="500" rows="2">{{ p.description }}</textarea></div>
+        <div class="col-12"><button class="btn btn-sm btn-fw-primary" type="submit">Save</button>
+          <span class="sb-help ms-2">Owner {{ owner }} &middot; updated {{ m.when(p.updated_at) }}</span></div>
+      </form>
+    </div>
+  </div>
+
+  {% if p.kind == 'app' %}
+  <div class="fw-card">
+    <div class="fw-card-header"><h2 class="fw-card-title">Images</h2></div>
+    <div class="fw-card-body">
+      {% if assets %}
+      <table class="table fw-table table-sm mb-0"><thead><tr><th>Name</th><th>sha256</th><th>Size</th></tr></thead><tbody>
+      {% for a in assets %}<tr><td>{{ a.name }}</td><td class="sb-mono">{{ a.sha256[:16] }}…</td><td>{{ (a.size / 1024)|round(1) }} KiB</td></tr>{% endfor %}
+      </tbody></table>
+      {% else %}<p class="sb-help mb-0">No images. The editor's Design tab uploads them (PNG, JPEG, GIF or WebP, 512 KiB each).</p>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fw-card">
+    <div class="fw-card-header"><h2 class="fw-card-title text-danger">Delete</h2></div>
+    <div class="fw-card-body">
+      <form method="post" action="{{ url_for('projects.delete', pid=p.id) }}" class="d-flex gap-2" data-confirm="Delete this project, its images and its history?">
+        {{ m.csrf() }}
+        <input class="form-control form-control-sm sb-mono" name="confirm" placeholder="type {{ p.slug }}" aria-label="Type the slug to confirm">
+        <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+      </form>
+      <p class="sb-help mt-2 mb-0">Deleting here never touches SATOM.</p>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/project.js') }}?v={{ app_version }}"></script>
+{% endblock %}

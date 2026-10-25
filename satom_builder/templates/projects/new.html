@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}New project — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-plus-lg me-2"></i>New project</h1></div>
+<div class="fw-card"><div class="fw-card-body">
+<form method="post" action="{{ url_for('projects.new') }}" class="row g-3" style="max-width: 760px">
+  {{ m.csrf() }}
+  <div class="col-md-8">
+    <label class="form-label" for="name">Name</label>
+    <input class="form-control" id="name" name="name" value="{{ form.name }}" required maxlength="200">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label" for="kind">Kind</label>
+    <select class="form-select" id="kind" name="kind">
+      {% for k, label in [('app', 'App (form, diagram, stores, connections)'), ('view', 'View (a page)'), ('widget', 'Widget (a dashboard tile)')] %}
+      <option value="{{ k }}" {{ 'selected' if form.kind == k }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label" for="slug">Slug</label>
+    <input class="form-control sb-mono" id="slug" name="slug" value="{{ form.slug }}" maxlength="80" pattern="[a-z0-9][a-z0-9-]*" placeholder="from the name">
+    <div class="sb-help">Lowercase letters, digits and dashes. It identifies the plugin in SATOM.</div>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label" for="version">Version</label>
+    <input class="form-control sb-mono" id="version" name="version" value="{{ form.version }}" pattern="\d{1,4}\.\d{1,4}\.\d{1,4}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label" for="icon">Icon</label>
+    <input class="form-control sb-mono" id="icon" name="icon" value="{{ form.icon }}" pattern="bi-[a-z0-9-]{1,28}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label" for="target_id">SATOM target</label>
+    <select class="form-select" id="target_id" name="target_id">
+      <option value="">— none yet —</option>
+      {% for t in targets %}<option value="{{ t.id }}" {{ 'selected' if form.target_id == t.id|string }}>{{ t.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-12">
+    <label class="form-label" for="description">Description</label>
+    <textarea class="form-control" id="description" name="description" maxlength="500" rows="2">{{ form.description }}</textarea>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-fw-primary" type="submit">Create project</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('projects.index') }}">Cancel</a>
+  </div>
+</form>
+</div></div>
+{% endblock %}

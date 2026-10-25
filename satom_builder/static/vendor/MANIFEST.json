@@ -1,0 +1,58 @@
+{
+  "_about": "Every third-party or SATOM-owned browser asset SATOM Builder serves, vendored so an offline install renders exactly like an online one. Nothing the Builder loads in a browser comes from another origin. Upgrading an asset: copy it byte-identical, update its entry and digest here; tests/test_static_assets.py checks every digest.",
+  "assets": [
+    {
+      "name": "Bootstrap",
+      "version": "5.3.3",
+      "license": "MIT",
+      "homepage": "https://getbootstrap.com/",
+      "source": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
+      "origin": "package/dist/css/bootstrap.min.css and package/dist/js/bootstrap.bundle.min.js, byte-identical",
+      "files": {
+        "bootstrap/bootstrap.min.css": "3c8f27e6009ccfd710a905e6dcf12d0ee3c6f2ac7da05b0572d3e0d12e736fc8",
+        "bootstrap/bootstrap.bundle.min.js": "0833b2e9c3a26c258476c46266e6877fc75218625162e0460be9a3a098a61c6c"
+      },
+      "via": "copied byte-identical from SATOM 4.0.1 app/static/vendor/ (visionebc/SATOM commit 0b7a6193)"
+    },
+    {
+      "name": "Bootstrap Icons",
+      "version": "1.11.3",
+      "license": "MIT",
+      "homepage": "https://icons.getbootstrap.com/",
+      "source": "https://registry.npmjs.org/bootstrap-icons/-/bootstrap-icons-1.11.3.tgz",
+      "origin": "package/font/bootstrap-icons.min.css, package/font/fonts/*, package/LICENSE, byte-identical; the stylesheet's relative fonts/ URLs resolve unchanged",
+      "files": {
+        "bootstrap-icons/bootstrap-icons.min.css": "f643d6fe7e679f9de3e16311600c5ef5cd6b098f7a3a8828fcc29255d2b33e62",
+        "bootstrap-icons/fonts/bootstrap-icons.woff2": "476adf42b40325098fcfa8b36ab3e769186bb4f6ce6a249753e2e1a9c22bf99e",
+        "bootstrap-icons/fonts/bootstrap-icons.woff": "bb1de989b83970f6f4e54de1cd974c5cba55b73582da5e1b225a6d0edf029483",
+        "bootstrap-icons/LICENSE": "0fb3e11bd57e896c5a512afd64864d28a37de45d19835016c87ca1ad19ead969"
+      },
+      "via": "copied byte-identical from SATOM 4.0.1 app/static/vendor/ (visionebc/SATOM commit 0b7a6193)"
+    },
+    {
+      "name": "Inter",
+      "version": "4.1",
+      "license": "OFL-1.1 (SIL Open Font License 1.1, no Reserved Font Name)",
+      "homepage": "https://rsms.me/inter/",
+      "source": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+      "origin": "web/InterVariable.woff2, web/InterVariable-Italic.woff2 and LICENSE.txt of the release zip (sha256 9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e), byte-identical. The release publishes no digest, so both fonts were cross-checked byte-identical to package/variable/ of https://registry.npmjs.org/inter-ui/-/inter-ui-4.1.1.tgz, whose integrity sha512-451h0J29HyOmA+JXgSi/6M12tL7ZCZ8arYKZUXiOXTJpJbAKqJvFh3k5SiV3x7tKe0C0KyrKUUiQIvvZ2PQDcA== matches npm. Declared as font-family 'Inter' by css/fortiweb.css.",
+      "files": {
+        "inter/InterVariable.woff2": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+        "inter/InterVariable-Italic.woff2": "e564f652916db6c139570fefb9524a77c4d48f30c92928de9db19b6b5c7a262a",
+        "inter/LICENSE.txt": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+      },
+      "via": "copied byte-identical from SATOM 4.0.1 app/static/vendor/ (visionebc/SATOM commit 0b7a6193)"
+    },
+    {
+      "name": "SATOM light theme (fortiweb.css)",
+      "version": "SATOM 4.0.1",
+      "license": "Proprietary, Vision EBC (same owner as SATOM Builder)",
+      "homepage": "visionebc/SATOM",
+      "source": "visionebc/SATOM app/static/css/fortiweb.css at commit fef6951abf0b082e2848470f330c0f5c72c4e75f",
+      "origin": "byte-identical. Its @font-face rules point at ../vendor/inter/, which does not resolve from vendor/satom/; css/builder.css re-declares the same Inter faces with the path that does. Builder-specific overrides (accent #EF5424) live in css/builder.css, never in this file.",
+      "files": {
+        "satom/fortiweb.css": "9cbf46bc28d98d92cc6deffde1638103b72727237e360d7a96ab477be5025455"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_value }}">{% endmacro %}
+
+{% macro secret_state(is_set) -%}
+{% if is_set %}<span class="sb-status-set"><i class="bi bi-lock-fill me-1"></i>set</span>{% else %}<span class="sb-status-unset">not set</span>{% endif %}
+{%- endmacro %}
+
+{% macro when(ts) -%}
+{% if ts %}<span title="{{ ts }}">{{ ts|datetime }}</span>{% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro kind_badge(kind) -%}
+<span class="fw-badge {{ {'app': 'fw-badge-primary', 'view': 'fw-badge-info', 'widget': 'fw-badge-secondary'}.get(kind, 'fw-badge-secondary') }}">{{ kind }}</span>
+{%- endmacro %}
+
+{% macro problems(list) -%}
+{% if list %}
+<ul class="sb-problems mb-0">{% for p in list %}<li><span class="sb-where">{{ p.where }}</span> {{ p.message }}</li>{% endfor %}</ul>
+{% endif %}
+{%- endmacro %}

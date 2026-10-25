@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}AI profiles — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-stars me-2"></i>AI profiles</h1></div>
+<div class="fw-card">
+  {% if rows %}
+  <table class="table fw-table mb-0 align-middle">
+    <thead><tr><th>Name</th><th>Adapter</th><th>Model</th><th>Base URL</th><th>Key</th><th>Max tokens</th><th>Effort</th><th>Fallbacks</th><th>State</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.name }}</td>
+      <td>{{ {'anthropic': 'Anthropic', 'openai_compatible': 'OpenAI-compatible'}[r.adapter] }}</td>
+      <td class="sb-mono">{{ r.model }}</td>
+      <td class="sb-mono">{{ r.base_url or ('api.anthropic.com' if r.adapter == 'anthropic' else '—') }}</td>
+      <td>{{ m.secret_state(r.key_set) }}</td>
+      <td>{{ r.max_tokens }}</td>
+      <td>{{ r.effort if r.adapter == 'anthropic' else '—' }}</td>
+      <td>{% if r.adapter != 'anthropic' %}—{% elif r.fallbacks_effective %}<span class="fw-badge fw-badge-success">on</span>{% elif r.fallbacks %}<span class="fw-badge fw-badge-secondary" title="Only on Anthropic's first-party API">n/a here</span>{% else %}off{% endif %}</td>
+      <td>{% if r.enabled %}<span class="fw-badge fw-badge-success">enabled</span>{% else %}<span class="fw-badge fw-badge-secondary">disabled</span>{% endif %}</td>
+      <td class="text-end text-nowrap">
+        <form method="post" action="{{ url_for('admin.ai_test', pid=r.id) }}" class="d-inline">{{ m.csrf() }}<button class="btn btn-sm btn-outline-primary" type="submit">Test</button></form>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.ai_page', edit=r.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('admin.ai_delete', pid=r.id) }}" class="d-inline" data-confirm="Delete profile {{ r.name }}?">{{ m.csrf() }}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="fw-card-body">No AI profile yet. Authors pick one for each generation.</div>{% endif %}
+</div>
+
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">{{ 'Edit ' ~ edit.name if edit else 'Add a profile' }}</h2></div>
+  <div class="fw-card-body">
+    <p class="sb-help">Two adapters. <strong>Anthropic</strong> uses the official SDK (default model <span class="sb-mono">claude-opus-5-5</span>, streaming, the author guide cached as the fixed system block). <strong>OpenAI-compatible</strong> covers OpenAI, Azure OpenAI, Mistral, Gemini's compatible endpoint, Ollama, vLLM and LM Studio: give the base URL that ends before <span class="sb-mono">/chat/completions</span> (for example <span class="sb-mono">https://api.openai.com/v1</span> or <span class="sb-mono">http://127.0.0.1:11434/v1</span>); local servers need no key. Keys are encrypted at rest and never shown again.</p>
+    <form method="post" action="{{ url_for('admin.ai_save') }}" class="row g-3" style="max-width: 900px" autocomplete="off">
+      {{ m.csrf() }}
+      {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+      <div class="col-md-4"><label class="form-label" for="a-name">Name</label><input class="form-control" id="a-name" name="name" value="{{ edit.name if edit else '' }}" maxlength="80" required></div>
+      <div class="col-md-4"><label class="form-label" for="a-adapter">Adapter</label>
+        <select class="form-select" id="a-adapter" name="adapter">
+          <option value="anthropic" {{ 'selected' if edit and edit.adapter == 'anthropic' }}>Anthropic</option>
+          <option value="openai_compatible" {{ 'selected' if edit and edit.adapter == 'openai_compatible' }}>OpenAI-compatible</option>
+        </select></div>
+      <div class="col-md-4"><label class="form-label" for="a-model">Model</label><input class="form-control sb-mono" id="a-model" name="model" value="{{ edit.model if edit else 'claude-opus-5-5' }}" maxlength="120"></div>
+      <div class="col-md-8"><label class="form-label" for="a-url">Base URL</label><input class="form-control sb-mono" id="a-url" name="base_url" value="{{ edit.base_url if edit else '' }}" placeholder="empty = https://api.anthropic.com (Anthropic)"></div>
+      <div class="col-md-4"><label class="form-label" for="a-max">Max tokens</label><input class="form-control" id="a-max" name="max_tokens" type="number" min="256" max="128000" value="{{ edit.max_tokens if edit else 64000 }}"></div>
+      <div class="col-md-8"><label class="form-label" for="a-key">API key — {{ m.secret_state(edit.key_set if edit else False) }}</label>
+        <input class="form-control" type="password" id="a-key" name="key" placeholder="{{ 'leave empty to keep' if edit and edit.key_set else '' }}" autocomplete="new-password">
+        {% if edit and edit.key_set %}<div class="form-check"><input class="form-check-input" type="checkbox" id="a-ck" name="clear_key"><label class="form-check-label sb-help" for="a-ck">remove the key</label></div>{% endif %}</div>
+      <div class="col-md-4"><label class="form-label" for="a-effort">Effort (Anthropic)</label>
+        <select class="form-select" id="a-effort" name="effort">{% for e in efforts %}<option value="{{ e }}" {{ 'selected' if (edit.effort if edit else 'high') == e }}>{{ e }}</option>{% endfor %}</select></div>
+      <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="a-fb" name="fallbacks" {{ 'checked' if (not edit or edit.fallbacks) }}>
+        <label class="form-check-label" for="a-fb">Refusal fallbacks (Anthropic, first-party API only): when the model declines, Anthropic re-runs the request on its recommended fallback model.</label></div>
+      <div class="col-12 form-check ms-2"><input class="form-check-input" type="checkbox" id="a-en" name="enabled" {{ 'checked' if (not edit or edit.enabled) }}>
+        <label class="form-check-label" for="a-en">Enabled (authors can pick it)</label></div>
+      <div class="col-12"><button class="btn btn-fw-primary" type="submit">Save</button>
+        {% if edit %}<a class="btn btn-outline-secondary" href="{{ url_for('admin.ai_page') }}">Cancel</a>{% endif %}</div>
+    </form>
+  </div>
+</div>
+{% endblock %}

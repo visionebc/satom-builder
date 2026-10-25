@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_value }}">
+  <title>Sign in — SATOM Builder</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/satom/fortiweb.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/builder.css') }}?v={{ app_version }}">
+</head>
+<body>
+<div class="sb-login-wrap">
+  <div class="sb-login-card">
+    <div class="sb-login-head">
+      <span class="sb-mark"><i class="bi bi-boxes"></i></span>
+      <h1>SATOM Builder</h1>
+      <p>Build, validate and sign SATOM plugins</p>
+    </div>
+    <div class="sb-login-body">
+      {% if error %}
+      <div class="fw-alert fw-alert-danger mb-3" role="alert"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('auth.login') }}" autocomplete="on">
+        <input type="hidden" name="csrf_token" value="{{ csrf_value }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="mb-3">
+          <label class="form-label" for="username">User name</label>
+          <input class="form-control" id="username" name="username" value="{{ username }}" autofocus required maxlength="80" autocomplete="username">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-control" id="password" name="password" type="password" required autocomplete="current-password">
+        </div>
+        <button class="btn btn-fw-primary w-100" type="submit">Sign in</button>
+      </form>
+      {% if dir_mode != 'off' %}
+      <p class="sb-help mt-3 mb-0">Directory sign-in is on ({{ {'ldap': 'LDAP', 'ad': 'Active Directory', 'radius': 'RADIUS'}[dir_mode] }}): use your directory account.</p>
+      {% endif %}
+    </div>
+  </div>
+  <p class="text-center sb-help mt-3">SATOM Builder {{ app_version }}</p>
+</div>
+</body>
+</html>

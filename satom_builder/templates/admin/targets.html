@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}SATOM targets — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-bullseye me-2"></i>SATOM targets</h1></div>
+<div class="fw-card">
+  {% if rows %}
+  <table class="table fw-table mb-0 align-middle">
+    <thead><tr><th>Name</th><th>URL</th><th>TLS</th><th>Tokens</th><th>Projects</th><th></th></tr></thead>
+    <tbody>
+    {% for t in rows %}
+    <tr>
+      <td>{{ t.name }}</td><td class="sb-mono">{{ t.base_url }}</td>
+      <td>{% if not t.verify_tls %}<span class="fw-badge fw-badge-danger">not verified</span>{% elif t.ca_pem %}<span class="fw-badge fw-badge-success">private CA</span>{% else %}<span class="fw-badge fw-badge-success">system CAs</span>{% endif %}</td>
+      <td>{{ t.ntokens }}</td><td>{{ t.nprojects }}</td>
+      <td class="text-end">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.targets_page', edit=t.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('admin.targets_delete', tid=t.id) }}" class="d-inline" data-confirm="Delete target {{ t.name }}? Its tokens are removed and its projects lose their target.">
+          {{ m.csrf() }}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="fw-card-body">No target yet.</div>{% endif %}
+</div>
+
+<div class="fw-card">
+  <div class="fw-card-header"><h2 class="fw-card-title">{{ 'Edit ' ~ edit.name if edit else 'Add a target' }}</h2></div>
+  <div class="fw-card-body">
+    <form method="post" action="{{ url_for('admin.targets_save') }}" class="row g-3" style="max-width: 820px">
+      {{ m.csrf() }}
+      {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+      <div class="col-md-4"><label class="form-label" for="t-name">Name</label>
+        <input class="form-control" id="t-name" name="name" value="{{ edit.name if edit else '' }}" maxlength="80" required></div>
+      <div class="col-md-8"><label class="form-label" for="t-url">Base URL</label>
+        <input class="form-control sb-mono" id="t-url" name="base_url" value="{{ edit.base_url if edit else '' }}" placeholder="https://satom.example.com" required pattern="https://.+">
+        <div class="sb-help">https only. The Builder calls <span class="sb-mono">/api/v1/builder/*</span> under it.</div></div>
+      <div class="col-12"><label class="form-label" for="t-ca">CA bundle (PEM, optional)</label>
+        <textarea class="form-control sb-mono" id="t-ca" name="ca_pem" rows="4" placeholder="-----BEGIN CERTIFICATE-----">{{ edit.ca_pem if edit else '' }}</textarea>
+        <div class="sb-help">When set, ONLY these CAs are trusted for this target (for SATOM's internal CA). Leave empty to use the system's public CAs.</div></div>
+      <div class="col-12"><div class="form-check">
+        <input class="form-check-input" type="checkbox" id="t-verify" name="verify_tls" {{ 'checked' if (not edit or edit.verify_tls) }}>
+        <label class="form-check-label" for="t-verify">Verify TLS (turn off only on a lab network)</label></div></div>
+      <div class="col-12"><button class="btn btn-fw-primary" type="submit">Save</button>
+        {% if edit %}<a class="btn btn-outline-secondary" href="{{ url_for('admin.targets_page') }}">Cancel</a>{% endif %}</div>
+    </form>
+  </div>
+</div>
+{% endblock %}
