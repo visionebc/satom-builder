@@ -23,8 +23,10 @@ import os
 import pwd
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -190,28 +192,52 @@ def cmd_restart_all(args):
 # ---------------------------------------------------------------------------
 # queue
 # ---------------------------------------------------------------------------
-def _chown_app(path):
+def _app_ids():
+    """(uid, gid) of the service account, or None when the tree is root's."""
     user = _app_user()
     if user == "root":
-        return
+        return None
     try:
         pw = pwd.getpwnam(user)
-        os.chown(path, pw.pw_uid, pw.pw_gid)
-    except (KeyError, OSError):
-        pass
+        return pw.pw_uid, pw.pw_gid
+    except KeyError:
+        return None
+
+
+def _up():
+    """The verifier module, which also holds the no-follow writers. Loaded from
+    the root-owned runner copy; from this checkout only when that copy is not
+    installed (tests, a source tree)."""
+    try:
+        return _load_root_module("update_package.py", "sb_cli_update_package")
+    except RuntimeError:
+        here = Path(__file__).resolve().parent.parent / "update_package.py"
+        spec = importlib.util.spec_from_file_location("sb_cli_update_package_src", here)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+
+def _write_app_file(subdir, name, chunks):
+    """Write ``APP_DIR/data/<subdir>/<name>`` as root WITHOUT following any
+    link: data/ belongs to the service account, which could otherwise point a
+    name (or a directory) this root process writes, chmods and chowns at any
+    file on the system. See update_package.write_nofollow."""
+    up = _up()
+    ids = _app_ids()
+    rel = DATA.relative_to(APP_DIR).parts + (subdir,)
+    dfd = up.open_dir_nofollow(APP_DIR, rel, ids)
+    try:
+        up.write_nofollow(dfd, name, chunks, 0o640, ids)
+    finally:
+        os.close(dfd)
+    return DATA / subdir / name
 
 
 def enqueue(req):
     """Write ``data/update-requests/<id>.json`` atomically (temp + rename)."""
-    REQ.mkdir(parents=True, exist_ok=True)
-    tmp = REQ / (".%s.tmp" % req["id"])
-    with open(tmp, "x", encoding="utf-8") as fh:
-        json.dump(req, fh, indent=2)
-    os.chmod(tmp, 0o640)
-    _chown_app(tmp)
-    final = REQ / ("%s.json" % req["id"])
-    os.rename(tmp, final)
-    return final
+    body = json.dumps(req, indent=2).encode("utf-8")
+    return _write_app_file(REQ.name, "%s.json" % req["id"], [body])
 
 
 def new_request(kind, **fields):
@@ -267,14 +293,20 @@ def cmd_update_apply(args):
     if not PKG_RE.match(src.name):
         print("%r is not an update package file name" % src.name, file=sys.stderr)
         return EXIT_USAGE
-    UPLOADS.mkdir(parents=True, exist_ok=True)
     dst = UPLOADS / src.name
-    if src.resolve() != dst.resolve():
-        tmp = UPLOADS / (".%s.part" % src.name)
-        shutil.copyfile(src, tmp)
-        os.chmod(tmp, 0o640)
-        _chown_app(tmp)
-        os.replace(tmp, dst)
+    absrc = Path(os.path.abspath(str(src)))
+    if absrc != dst:
+        if APP_DIR in absrc.parents:
+            # Inside the tree the service account chooses what a path is.
+            print("refusing %s: inside %s a package is applied only from %s/"
+                  % (src, APP_DIR, UPLOADS), file=sys.stderr)
+            return EXIT_USAGE
+        fd = os.open(str(absrc), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                print("%s is not a regular file" % src, file=sys.stderr)
+                return EXIT_USAGE
+            _write_app_file(UPLOADS.name, src.name, iter(lambda: fh.read(1 << 20), b""))
     req = new_request("package", path="data/update-uploads/%s" % src.name,
                       allow_downgrade=bool(args.allow_downgrade))
     enqueue(req)
@@ -337,9 +369,16 @@ def cmd_update_fetch(args):
     if not args.yes:
         print("dry run: re-run with --yes to download it into %s (it is NOT applied)" % UPLOADS)
         return EXIT_USAGE
-    path = feed_mod.download_package(doc, UPLOADS)
-    os.chmod(path, 0o640)
-    _chown_app(path)
+    # Downloaded into a root-only directory, then placed with the no-follow
+    # writer: data/update-uploads/ belongs to the service account.
+    tmpdir = tempfile.mkdtemp(prefix="satom-builder-fetch-")
+    try:
+        os.chmod(tmpdir, 0o700)
+        got = feed_mod.download_package(doc, tmpdir)
+        with open(got, "rb") as fh:
+            path = _write_app_file(UPLOADS.name, got.name, iter(lambda: fh.read(1 << 20), b""))
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
     print("downloaded %s (size and sha256 match the feed)" % path)
     print("the SIGNATURE is checked when it is applied: satom-builder update apply %s" % path)
     return EXIT_OK

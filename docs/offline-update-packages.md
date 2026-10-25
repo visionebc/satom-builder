@@ -221,7 +221,15 @@ The runner runs as root, so it never runs code the service account can write:
 - the verifier is loaded from the runner's own directory, never from the app tree;
 - requests and status files are read and written without following links;
 - git runs as the service account, never as root in its repository;
-- root-side files are refreshed only from a root-only copy of a verified package.
+- root-side files are refreshed only from a root-only copy of a verified package;
+- root never writes, `chmod`s or `chown`s BY PATH in the service account's
+  directories, which that account can turn into links at any moment. In
+  `data/` (the queue, the uploads) root writes through descriptors that never
+  follow a link; INSIDE the application tree the service account itself writes
+  (the new revision, removed files, the restored venv and databases), after root
+  has validated the bytes. `.env` is read only when it is a regular file owned
+  by root. The operator CLI follows the same rules, and `update apply` takes a
+  package inside the tree only from `data/update-uploads/`.
 
 ## 9. Release trust for `deploy/` changes
 

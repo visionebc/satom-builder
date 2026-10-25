@@ -5,7 +5,43 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [0.1.5] - 2026-10-25
 
-The console on a phone (measured at 360, 390 and 430 px in a real browser).
+The console on a phone (measured at 360, 390 and 430 px in a real browser),
+and root no longer touches the service account's files by path.
+
+### Security
+
+Found by the release-trust review of `deploy/`. The application tree and
+`data/` belong to the service account, which can turn any entry into a symbolic
+link at any moment, including between a check and the write that follows it.
+Root processes wrote, `chmod`-ed and `chown`-ed there BY PATH. **Upgrade every
+node.**
+
+- **`satom-builder update apply` could overwrite and give away any file on the
+  system.** It copied the package through a predictable
+  `data/update-uploads/.<name>.part` and changed its mode and owner by path: a
+  link planted there by the service account made root write the package over
+  the file it pointed at (the runner's own code, for one) and hand it to that
+  account. `update fetch` and every queued request had the same flaw. They now
+  write through descriptors that never follow a link (`O_NOFOLLOW`, a random
+  `O_EXCL` temp name, mode and owner set on the open file, atomic rename); a
+  package given by a path inside the application tree, other than
+  `data/update-uploads/<name>`, is refused.
+- **The update runner writes the application tree as the service account.**
+  The verified `app.tar.gz` is still validated by root (no links, devices,
+  absolute or `..` paths, size ceiling); the account extracts it, removes the
+  files the new revision dropped, and restores the venv and, on
+  `rollback --restore-db`, the databases. The package is copied to root-only
+  staging through a descriptor before it is verified, and the database backups
+  are read the same way.
+- **`.env` is read only when it is a regular file owned by root.** A link put
+  in its place made the runner read any `KEY=value` file root can read (another
+  product's secrets) and pass it to a process running as the service account.
+- **`install-cli.sh` and `install-runner.sh` refuse a source that is a link**
+  (`cp -a` copied it as a link, and the root-owned copy executed whatever it
+  pointed at). `chown -R` of the tree no longer follows links (`-h`).
+- **Re-running the installer refuses links** at `.env`, `data/`, its queue
+  directories, `state/`, `data/.installed` and the log directory instead of
+  writing, `chmod`-ing and `chown`-ing what they point at.
 
 ### Fixed
 

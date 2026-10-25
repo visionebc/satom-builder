@@ -1010,6 +1010,20 @@ ok "Virtual environment ready ($(venv/bin/python --version 2>&1))"
 
 # Layout. The service account owns the tree (it is what update packages
 # replace) except .env (root:<account> 0640: the app only READS its secrets).
+# On a RE-RUN these paths already exist inside the service account's tree, and
+# that account may have turned any of them into a link: every chmod/chown/write
+# below would then hit the file or directory it points at (/etc made 0750,
+# /etc/shadow truncated and handed over). Refuse a link; never follow it.
+refuse_links_in_tree() {
+    local p
+    for p in "$APP_DIR/data" "$APP_DIR/data/update-requests" "$APP_DIR/data/update-status" \
+             "$APP_DIR/data/update-uploads" "$APP_DIR/state" "$APP_DIR/.env" \
+             "$APP_DIR/data/.installed" "$LOG_DIR"; do
+        [ -L "$p" ] && die "$p is a symlink -- refusing to touch it as root (inspect it, remove it, re-run)"
+    done
+    return 0
+}
+refuse_links_in_tree
 install -d -m 0750 "$APP_DIR/data" "$APP_DIR/data/update-requests" "$APP_DIR/data/update-status" \
                    "$APP_DIR/data/update-uploads" "$LOG_DIR"
 install -d -m 0700 "$APP_DIR/state"
@@ -1025,6 +1039,13 @@ ok "Layout: ${APP_DIR} (${APP_USER}), data/ 0750, state/ 0700, ${ETC_DIR} root"
 # -----------------------------------------------------------------------------
 say "Step 4/7 -- Configuration, database, publisher key, administrator"
 ENVF="$APP_DIR/.env"
+# .env sits in the service account's directory: on a RE-RUN that account may
+# have replaced it with a link, and every write below (append, chown, chmod)
+# would land on the file it points at -- /etc/shadow made readable to it, for
+# one. Only a regular file (or none) is used; anything else stops the install.
+if [ -L "$ENVF" ] || { [ -e "$ENVF" ] && [ ! -f "$ENVF" ]; }; then
+    die "$ENVF is a symlink or not a regular file -- refusing to write it as root (inspect it, remove it, re-run)"
+fi
 env_has() { [ -f "$ENVF" ] && grep -qE "^$1=." "$ENVF"; }
 env_add() {  # env_add KEY VALUE -- only when missing: secrets are NEVER regenerated
     env_has "$1" && return 0
@@ -1040,7 +1061,8 @@ env_add FERNET_KEY "$(venv/bin/python -c 'from cryptography.fernet import Fernet
 env_add SATOM_BUILDER_DATA "$APP_DIR/data"
 env_add SATOM_BUILDER_PUBLISHER_KEY "$PUBLISHER_KEY"
 env_add SATOM_BUILDER_BIND "$BIND"
-chown root:"$APP_USER" "$ENVF"; chmod 0640 "$ENVF"
+[ -L "$ENVF" ] && die "$ENVF became a symlink during the install -- refusing"
+chown -h root:"$APP_USER" "$ENVF"; chmod 0640 "$ENVF"
 ok ".env ready (root:${APP_USER} 0640; existing secrets kept)"
 
 # manage runs AS THE SERVICE ACCOUNT with .env in its environment.
@@ -1084,7 +1106,8 @@ fi
 unset ADMIN_PASS _pw2 SETUP_ADMIN_PASSWORD
 run_manage check >>"$INSTALL_LOG" 2>&1 || die "manage check reports a configuration problem (check $INSTALL_LOG)"
 ok "manage check: configuration sane"
-: > "$APP_DIR/data/.installed"; chown "$APP_USER:$APP_USER" "$APP_DIR/data/.installed"
+refuse_links_in_tree
+: > "$APP_DIR/data/.installed"; chown -h "$APP_USER:$APP_USER" "$APP_DIR/data/.installed"
 
 # -----------------------------------------------------------------------------
 # STEP 5 -- PRIVILEGE MODEL: sudoers, units, CLI, runner, trust store

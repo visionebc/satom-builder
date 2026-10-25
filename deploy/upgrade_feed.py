@@ -338,7 +338,14 @@ def download_file(url: str, name: str, want_sha: str, size: int, dest_dir,
     done = 0
     last = 0
     try:
-        with _open(url, timeout, auth) as resp, open(part, "wb") as fh:
+        # O_NOFOLLOW|O_EXCL: a link (or a file) planted under the .part name is
+        # never written through. The CLI downloads into a root-only directory.
+        try:
+            part.unlink()
+        except FileNotFoundError:
+            pass
+        pfd = os.open(str(part), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with _open(url, timeout, auth) as resp, os.fdopen(pfd, "wb") as fh:
             while True:
                 chunk = resp.read(1 << 20)
                 if not chunk:

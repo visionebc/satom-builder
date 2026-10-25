@@ -178,9 +178,8 @@ def app_env():
     base. The file is root:<account> 0640; it is parsed, never sourced."""
     env = {"PATH": "%s:/usr/sbin:/usr/bin:/sbin:/bin" % VENV, "HOME": str(APP),
            "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-    try:
-        text = (APP / ".env").read_text(encoding="utf-8")
-    except OSError:
+    text = _read_env_file()
+    if text is None:
         return env
     for line in text.splitlines():
         line = line.strip()
@@ -194,6 +193,30 @@ def app_env():
             val = val[1:-1]
         env[m.group(1)] = val
     return env
+
+
+def _read_env_file():
+    """APP/.env as text, or None. It is root:<account> 0640 by design, but it
+    sits in a directory the service account owns, which can swap it for a link
+    to any KEY=value file root can read (another product's secrets) -- that
+    content would then reach a process running as the account. So: no link,
+    a regular file, owned by root and writable by nobody else; anything else is
+    ignored (and said so in the journal)."""
+    try:
+        fd = os.open(str(APP / ".env"), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        _log("ignoring %s/.env: %s" % (APP, exc))
+        return None
+    with os.fdopen(fd, "rb") as fh:
+        st_ = os.fstat(fh.fileno())
+        if (not stat.S_ISREG(st_.st_mode) or st_.st_uid != 0
+                or st_.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            _log("ignoring %s/.env: it must be a regular file owned by root and "
+                 "writable only by root" % APP)
+            return None
+        return fh.read(1024 * 1024).decode("utf-8", "replace")
 
 
 def manage(*args, timeout=600):
@@ -569,12 +592,63 @@ def preserve_local_commits(snapshot, st):
     return u.returncode == 0
 
 
+def _as_app():
+    """True when writes inside the app tree must be done AS the service
+    account. Root never writes there by path: the account owns every directory
+    of the tree and can swap any entry for a link between a check and a write.
+    Whatever the account then makes a write do, it could already do itself."""
+    return bool(APP_USER) and APP_USER != "root" and os.geteuid() == 0
+
+
+def _run_bytes(cmd, data, timeout=1800, cwd="/"):
+    """``cmd`` AS THE SERVICE ACCOUNT, with ``data`` on stdin (bytes)."""
+    return subprocess.run(["runuser", "-u", APP_USER, "--"] + list(cmd), input=data,
+                          capture_output=True, timeout=timeout, cwd=cwd)
+
+
+def install_tree(up, app_tar):
+    """Lay the verified app.tar.gz over the tree. Root validates the archive
+    (no link, no device, no absolute or ``..`` path, size ceiling) and keeps the
+    file list; the service account extracts it into its own tree. Returns the
+    list of files written, relative to APP."""
+    if not _as_app():
+        return up.extract_app_tree(app_tar, APP)
+    written = up.app_tree_files(app_tar)
+    r = _run_bytes(["tar", "-xzf", "-", "-C", str(APP), "--no-same-owner"],
+                   Path(app_tar).read_bytes())
+    if r.returncode != 0:
+        raise RuntimeError("extracting the application tree as %s failed: %s"
+                           % (APP_USER, (r.stderr or b"").decode("utf-8", "replace")[-300:]))
+    return written
+
+
+def remove_in_tree(rels):
+    """Remove these tree-relative FILES (never directories)."""
+    rels = [r for r in rels if r and not r.startswith("/") and ".." not in Path(r).parts]
+    if not rels:
+        return
+    if _as_app():
+        for i in range(0, len(rels), 200):
+            _run_bytes(["rm", "-f", "--"] + rels[i:i + 200], b"", timeout=300, cwd=str(APP))
+        return
+    for rel in rels:
+        if _link_below(APP, Path(rel).parent):
+            continue
+        target = APP / rel
+        try:
+            if target.is_file() or target.is_symlink():
+                target.unlink()
+        except OSError:
+            pass
+
+
 def _chown_tree():
     """Give the tree back to the service account (vendored). ``.env`` stays
     root:<account> 0640, set through an O_NOFOLLOW fd."""
     if not APP_USER or APP_USER == "root":
         return True, "running un-deprivileged; nothing to hand back"
-    r = subprocess.run(["chown", "-R", "%s:%s" % (APP_USER, APP_USER), str(APP)],
+    # -h: a link in the tree is re-owned itself, never the file it names.
+    r = subprocess.run(["chown", "-R", "-h", "%s:%s" % (APP_USER, APP_USER), str(APP)],
                        capture_output=True, text=True, timeout=600)
     try:
         import grp
@@ -754,7 +828,17 @@ def backup_databases(point_dir, st):
                 raise Refused("database backup of %s failed: %s"
                               % (db.name, (r.stderr or r.stdout or "")[-300:]))
             final = dest / (db.name + ".bak")
-            shutil.copyfile(tmp, final)
+            # work/ belongs to the service account: its copy is read through a
+            # descriptor (no link, a regular file it owns), so it cannot hand
+            # root another file to store and later "restore" into data/.
+            wfd = os.open(str(work), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                up = _load_update_package()
+                with up.open_file_nofollow(wfd, tmp.name, ids[0] if ids else None) as src, \
+                        open(final, "wb") as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
+            finally:
+                os.close(wfd)
             os.chmod(final, 0o600)
             saved.append({"name": db.name, "backup": final.name,
                           "size": final.stat().st_size})
@@ -765,11 +849,46 @@ def backup_databases(point_dir, st):
         shutil.rmtree(work, ignore_errors=True)
 
 
+_DB_RESTORE = r"""
+import os, sys
+d, name = sys.argv[1], sys.argv[2]
+for side in ("-wal", "-shm", "-journal"):
+    try:
+        os.unlink(os.path.join(d, name + side))
+    except FileNotFoundError:
+        pass
+tmp = os.path.join(d, ".%s.restore.%s" % (name, os.urandom(4).hex()))
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o640)
+with os.fdopen(fd, "wb") as fh:
+    while True:
+        b = sys.stdin.buffer.read(1 << 20)
+        if not b:
+            break
+        fh.write(b)
+os.replace(tmp, os.path.join(d, name))
+"""
+
+
 def restore_databases(point_dir, saved, st):
     """Put the backed-up databases back (operator rollback with restore_db).
-    The service is stopped by the caller."""
+    The service is stopped by the caller. Written AS THE SERVICE ACCOUNT:
+    data/ is its directory."""
     d = data_dir()
     ids = _app_ids()
+    if _as_app():
+        for rec in saved:
+            name = rec.get("name", "")
+            if not _FILE_NAME_RE.fullmatch(name) or not name.endswith(DB_SUFFIXES):
+                raise RuntimeError("refusing to restore a database named %r" % name)
+            data = (Path(point_dir) / "db" / (name + ".bak")).read_bytes()
+            r = _run_bytes([sys.executable, "-I", "-c", _DB_RESTORE, str(d), name], data,
+                           timeout=1200)
+            if r.returncode != 0:
+                raise RuntimeError("restoring %s as %s failed: %s" % (
+                    name, APP_USER, (r.stderr or b"").decode("utf-8", "replace")[-300:]))
+        st.step("restore database", True, "%d database(s) restored from the backup taken "
+                "before the update" % len(saved))
+        return
     for rec in saved:
         name = rec.get("name", "")
         if not _FILE_NAME_RE.fullmatch(name) or not name.endswith(DB_SUFFIXES):
@@ -896,15 +1015,26 @@ def restore_venv(point_dir, st):
         st.step("restore venv", False, "no venv copy in the rollback point")
         return False
     live = APP / "venv"
+    if _as_app():
+        # Removed and rewritten BY THE SERVICE ACCOUNT: root streams the saved
+        # copy, the account unpacks it into its own tree.
+        rm = _run_bytes(["rm", "-rf", "--", "venv"], b"", timeout=600, cwd=str(APP))
+        tar = subprocess.run(["tar", "-C", str(point_dir), "-cf", "-", "venv"],
+                             capture_output=True, timeout=1800)
+        if rm.returncode != 0 or tar.returncode != 0:
+            st.step("restore venv", False, ((rm.stderr or b"") + (tar.stderr or b""))
+                    .decode("utf-8", "replace")[-300:] or "could not prepare the venv copy")
+            return False
+        r = _run_bytes(["tar", "-xf", "-", "-C", str(APP), "--no-same-owner"], tar.stdout)
+        err = (r.stderr or b"").decode("utf-8", "replace")
+        st.step("restore venv", r.returncode == 0, (err or "venv as before the update")[-300:])
+        return r.returncode == 0
     if live.is_symlink():
         live.unlink()
     elif live.exists():
         shutil.rmtree(live)
     r = subprocess.run(["cp", "-a", str(saved), str(live)], capture_output=True,
                        text=True, timeout=1800)
-    if r.returncode == 0 and APP_USER and APP_USER != "root":
-        subprocess.run(["chown", "-R", "%s:%s" % (APP_USER, APP_USER), str(live)],
-                       timeout=600)
     st.step("restore venv", r.returncode == 0, (r.stderr or "venv as before the update")[-300:])
     return r.returncode == 0
 
@@ -1112,12 +1242,20 @@ def package_change(req):
             raise Refused("%s is not a regular file" % name)
         st.step("locate package", True, "%s (%d bytes)" % (name, info.st_size))
 
-        # Extract ONCE into root-only space: the upload dir is writable by the
-        # service account, so anything verified in place could be swapped.
+        # Copy ONCE into root-only space, through a descriptor (no link, a
+        # regular file), and extract that copy: the upload dir is writable by
+        # the service account, so anything verified in place could be swapped.
         stage = Path(tempfile.mkdtemp(prefix="satom-builder-pkg-", dir="/var/tmp"))
         os.chmod(stage, 0o700)
         st.begin("extract to root-only staging")
-        pkg_dir = up.extract_package(pkg_file, stage)
+        ufd = up.open_dir_nofollow(APP, ("data", "update-uploads"))
+        try:
+            with up.open_file_nofollow(ufd, name) as src, \
+                    open(stage / "package.tar.gz", "wb") as out:
+                shutil.copyfileobj(src, out, 1 << 20)
+        finally:
+            os.close(ufd)
+        pkg_dir = up.extract_package(stage / "package.tar.gz", stage / "pkg")
         st.step("extract to root-only staging", True, str(stage))
 
         # -- 2. signature -------------------------------------------------------
@@ -1215,20 +1353,14 @@ def package_change(req):
                        if ln.strip()}
         touched = True
         st.begin("install application tree")
-        written = up.extract_app_tree(app_tar, APP)
+        written = install_tree(up, app_tar)
         st.step("install application tree", True, "%d file(s) from %s" % (len(written), name))
         stale = sorted(tracked_now - set(written))
         if tracked_now and len(stale) > max(20, len(tracked_now) // 2):
             raise RuntimeError("refusing to remove %d of %d tracked files: the package's "
                                "app.tar.gz does not look like this product's tree"
                                % (len(stale), len(tracked_now)))
-        for rel in stale:
-            if _link_below(APP, Path(rel).parent):
-                continue
-            try:
-                (APP / rel).unlink()
-            except OSError:
-                pass
+        remove_in_tree(stale)
         if stale:
             st.step("remove %d file(s) the new revision dropped" % len(stale), True,
                     ", ".join(stale[:8]))
@@ -1313,15 +1445,7 @@ def _rollback_after_failure(st, snapshot, point_dir, untracked_before, root_touc
         st.step("restore application tree", r.returncode == 0,
                 (r.stderr or "tree at %s" % snapshot[:12]).strip()[-300:])
         stray = _new_untracked(untracked_before)
-        for rel in stray:
-            if _link_below(APP, Path(rel).parent):
-                continue
-            target = APP / rel
-            try:
-                if target.is_file() or target.is_symlink():
-                    target.unlink()
-            except OSError:
-                pass
+        remove_in_tree(stray)
         if stray:
             st.step("remove %d file(s) the package added" % len(stray), True,
                     ", ".join(stray[:8]))

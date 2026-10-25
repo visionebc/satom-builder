@@ -44,6 +44,10 @@ fi
 for f in $FILES; do
   [ -f "${DEPLOY_SRC}/${f}" ] || {
     echo "install-runner.sh: missing ${DEPLOY_SRC}/${f}" >&2; exit 1; }
+  # `cp -a` copies a link AS a link: root would run the file it points at on
+  # every update, whatever this script verified. Refuse, never resolve.
+  [ ! -L "${DEPLOY_SRC}/${f}" ] && [ ! -L "$(dirname "${DEPLOY_SRC}/${f}")" ] || {
+    echo "install-runner.sh: ${DEPLOY_SRC}/${f} is (or sits under) a symlink -- refusing" >&2; exit 1; }
 done
 
 # A SYSTEM python >= 3.10, never the venv (the runner must work when the venv

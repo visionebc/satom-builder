@@ -27,6 +27,14 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 [ -d "$SRC" ] || { echo "install-cli.sh: missing ${SRC}" >&2; exit 1; }
 [ -f "$LAUNCHER" ] || { echo "install-cli.sh: missing ${LAUNCHER}" >&2; exit 1; }
+# A link in the source would survive `cp -a` AS a link: the root-owned copy
+# would then execute whatever file it points at, for good. The source is the
+# service account's tree unless a signed release was staged; refuse, never
+# resolve.
+if [ -L "$SRC" ] || [ -L "$LAUNCHER" ] || [ -n "$(find "$SRC" ! -type f ! -type d -print -quit)" ]; then
+  echo "install-cli.sh: ${SRC} holds a symlink or a special file -- refusing to install it as root" >&2
+  exit 1
+fi
 
 # Build beside, then swap: a half-copied package would make the recovery tool
 # itself unimportable.
