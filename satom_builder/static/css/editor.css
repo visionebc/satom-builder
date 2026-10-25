@@ -226,3 +226,15 @@ body.ed-checks-open .ed-checks { display: block; }
 .ed-dialog-out { margin-top: 10px; }
 .ed-rounds { font-size: 12.5px; padding-left: 18px; margin-top: 8px; }
 .ed-rounds li { margin-bottom: 4px; }
+
+/* Phones: one column everywhere (a 3-column field row cut the data-store
+   value and stacked "Searchable" one word per line at 390px), tappable icon
+   buttons, the code editor at 16px (builder.css) with its gutter in step. */
+@media (max-width: 640px) {
+  .ed-grid-2, .ed-grid-3, .ed-grid-4, .ed-grid-5,
+  .ed-diagram, .ed-design, .ed-scripts, .ed-scripts-cols { grid-template-columns: minmax(0, 1fr); }
+  .ed-span-2 { grid-column: auto; }
+  .fw-main .ed-icon-btn { padding: 8px 11px; }
+  .ed-code-gutter, .ed-code-text { font-size: 16px; line-height: 22px; }
+  .ed-checks { width: 100%; }
+}

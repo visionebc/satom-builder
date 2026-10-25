@@ -86,3 +86,18 @@
 .sb-login-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
 .sb-login-head p { margin: 0; color: var(--fw-sidebar-text); font-size: 13px; }
 .sb-login-body { padding: 28px 32px; }
+
+/* Phones (<= 768px: fortiweb.css turns the sidebar into an overlay there).
+   Lab audit 2026-10-25 at 360/390/430px. */
+@media (max-width: 768px) {
+  /* fortiweb.css resets .fw-footer, not ours: without this the footer kept the
+     sidebar's 264px margin and wrapped in a strip on the right. */
+  .sb-footer { margin-left: 0 !important; padding: 10px 12px; }
+  /* iOS Safari zooms into a field under 16px on focus and stays zoomed. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]),
+  select, textarea { font-size: 16px !important; }
+  /* touch targets: small buttons grow to ~36px */
+  .fw-main .btn-sm, .fw-main .btn-group-sm > .btn { padding-top: .4rem; padding-bottom: .4rem; }
+  /* a select inside a table cell keeps room for its value */
+  .sb-role-select { min-width: 7.5rem; }
+}

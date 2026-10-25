@@ -3,6 +3,31 @@
 All notable changes to SATOM Builder are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.5] - 2026-10-25
+
+The console on a phone (measured at 360, 390 and 430 px in a real browser).
+
+### Fixed
+
+- **The menu button opens the sidebar on a phone.** It only toggled the
+  desktop collapse, so below 768 px the sidebar stayed hidden and every page
+  outside the current one (Administrator, AI profiles, tokens) was out of
+  reach. It is now an overlay: a tap outside or Escape closes it.
+- **The footer no longer keeps the sidebar's margin on a phone** (it wrapped
+  in a narrow strip on the right).
+- **No field below 16 px on a phone**, so iOS Safari does not zoom into the
+  page when a field is focused. The script editor's line numbers follow.
+- **The editor is one column on a phone**: a three-column field row cut the
+  data store's name and broke "Searchable" into one word per line.
+- **Users:** the role of each user is visible again (its select had shrunk to
+  the arrow).
+- Small buttons grow to a tappable size on a phone.
+
+### Changed
+
+- **Projects:** "Last check" is the second column, so the check result is on
+  the first screen of a phone; the slug moved after the target.
+
 ## [0.1.4] - 2026-10-25
 
 First public release: the repository and its releases are published at

@@ -118,8 +118,8 @@ there is no built-in address; the public repository is
 Copy the bundle **and its `.sha256`** to the target, then:
 
 ```bash
-sha256sum -c satom-builder-offline-0.1.4-debian12-amd64.tar.gz.sha256
-tar xzf satom-builder-offline-0.1.4-debian12-amd64.tar.gz
+sha256sum -c satom-builder-offline-0.1.5-debian12-amd64.tar.gz.sha256
+tar xzf satom-builder-offline-0.1.5-debian12-amd64.tar.gz
 cd satom-builder-installer
 sudo bash satom-builder-setup.sh
 ```
@@ -131,7 +131,7 @@ the extracted folder: it installs `tar` from the bundle before anything else.
 or let the guided installer verify and extract it:
 
 ```bash
-sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.4-rhel9-x86_64.tar.gz
+sudo bash satom-builder-setup.sh --bundle satom-builder-offline-0.1.5-rhel9-x86_64.tar.gz
 ```
 
 A bundle holds **one** family: `bundle/debs/` (Debian 12), `bundle/rpms/`

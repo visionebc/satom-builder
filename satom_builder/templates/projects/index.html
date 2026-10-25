@@ -16,18 +16,18 @@
   {% if rows %}
   <div class="table-responsive">
   <table class="table fw-table mb-0 align-middle">
-    <thead><tr><th>Name</th><th>Kind</th><th>Slug</th><th>Version</th><th>Target</th>{% if show_all %}<th>Owner</th>{% endif %}<th>Last check</th><th>Updated</th></tr></thead>
+    <thead><tr><th>Name</th><th>Last check</th><th>Kind</th><th>Version</th><th>Target</th><th>Slug</th>{% if show_all %}<th>Owner</th>{% endif %}<th>Updated</th></tr></thead>
     <tbody>
     {% for r in rows %}
       {% set lc = r.last_check|fromjson %}
       <tr>
         <td><i class="bi {{ r.icon }} me-1"></i><a href="{{ url_for('projects.overview', pid=r.id) }}">{{ r.name }}</a></td>
+        <td>{% if lc and lc.result %}{% if lc.result.ok %}<span class="fw-badge fw-badge-success">ok</span>{% else %}<span class="fw-badge fw-badge-danger">{{ (lc.result.problems or [])|length }} problem(s)</span>{% endif %} <span class="sb-help">{{ lc.source }}</span>{% else %}<span class="sb-help">never</span>{% endif %}</td>
         <td>{{ m.kind_badge(r.kind) }}</td>
-        <td class="sb-mono">{{ r.slug }}</td>
         <td class="sb-mono">{{ r.version }}</td>
         <td>{{ tnames.get(r.target_id, '—') }}</td>
+        <td class="sb-mono">{{ r.slug }}</td>
         {% if show_all %}<td>{{ r.owner }}</td>{% endif %}
-        <td>{% if lc and lc.result %}{% if lc.result.ok %}<span class="fw-badge fw-badge-success">ok</span>{% else %}<span class="fw-badge fw-badge-danger">{{ (lc.result.problems or [])|length }} problem(s)</span>{% endif %} <span class="sb-help">{{ lc.source }}</span>{% else %}<span class="sb-help">never</span>{% endif %}</td>
         <td>{{ m.when(r.updated_at) }}</td>
       </tr>
     {% endfor %}

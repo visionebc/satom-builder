@@ -32,7 +32,7 @@ After five wrong passwords for one user name (or twenty from one address) within
 
 ## 2. Projects
 
-**Projects** (sidebar › Build) lists your projects: name, kind, slug, version, SATOM target, the result of the last check, and when it changed. Administrators can switch to *Everybody's* projects.
+**Projects** (sidebar › Build) lists your projects: name, the result of the last check, kind, version, SATOM target, slug, and when it changed. Administrators can switch to *Everybody's* projects.
 
 ### New project
 
@@ -116,7 +116,7 @@ Shows your user name, role, how you sign in and your last sign-in. Local users c
 
 ## 9. Administration
 
-The *Administrator* part of the sidebar is shown to administrators only.
+The *Administrator* part of the sidebar is shown to administrators only. On a phone (768 px or narrower) the sidebar is hidden: the menu button at the top left opens it over the page, and a tap outside or Escape closes it.
 
 ### SATOM targets
 

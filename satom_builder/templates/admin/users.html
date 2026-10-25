@@ -13,7 +13,7 @@
       <td>
         <form method="post" action="{{ url_for('admin.users_update', uid=u.id) }}" class="d-flex gap-1">
           {{ m.csrf() }}<input type="hidden" name="action" value="role">
-          <select class="form-select form-select-sm" name="role" aria-label="Role">
+          <select class="form-select form-select-sm sb-role-select" name="role" aria-label="Role">
             <option value="author" {{ 'selected' if u.role == 'author' }}>author</option>
             <option value="admin" {{ 'selected' if u.role == 'admin' }}>admin</option>
           </select>

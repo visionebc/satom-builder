@@ -46,28 +46,55 @@
     return e;
   }
 
-  // sidebar collapse, remembered per browser
+  // Sidebar. Desktop: collapse, remembered per browser. Phone (<= 768px, where
+  // fortiweb.css hides the sidebar): an overlay opened by the menu button and
+  // closed by a tap outside or Escape; 'collapsed' (width 0) is never used
+  // there, or the overlay opens with no width (SATOM main.js does the same).
   var KEY = 'satom-builder.sidebar-collapsed';
-  function setCollapsed(on, persist) {
-    var sb = document.getElementById('fw-sidebar');
-    var main = document.getElementById('fw-main');
-    var foot = document.querySelector('.sb-footer');
-    if (!sb) { return; }
-    sb.classList.toggle('collapsed', on);
-    if (main) { main.style.marginLeft = on ? '0' : ''; }
-    if (foot) { foot.style.marginLeft = on ? '0' : ''; }
+  var PHONE_MAX = 768;
+  function isPhone() { return window.innerWidth <= PHONE_MAX; }
+  function parts() {
+    return {btn: document.getElementById('fw-sidebar-toggle'), sb: document.getElementById('fw-sidebar'),
+            main: document.getElementById('fw-main'), foot: document.querySelector('.sb-footer')};
+  }
+  function setCollapsed(p, on, persist) {
+    if (!p.sb) { return; }
+    p.sb.classList.toggle('collapsed', on);
+    if (p.main) { p.main.style.marginLeft = on ? '0' : ''; }
+    if (p.foot) { p.foot.style.marginLeft = on ? '0' : ''; }
     if (persist) { try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (x) { /* private mode */ } }
+  }
+  function setPhoneOpen(p, open) {
+    if (!p.sb) { return; }
+    p.sb.classList.remove('collapsed');
+    p.sb.classList.toggle('mobile-open', open);
+    if (p.main) { p.main.style.marginLeft = ''; }
+    if (p.foot) { p.foot.style.marginLeft = ''; }
+    if (p.btn) { p.btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    document.body.classList.toggle('fw-sidebar-open', open);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     var stored = false;
     try { stored = localStorage.getItem(KEY) === '1'; } catch (x) { stored = false; }
-    setCollapsed(stored, false);
-    var btn = document.getElementById('fw-sidebar-toggle');
-    if (btn) {
-      btn.addEventListener('click', function () {
-        var sb = document.getElementById('fw-sidebar');
-        setCollapsed(!(sb && sb.classList.contains('collapsed')), true);
+    var p = parts();
+    if (isPhone()) { setPhoneOpen(p, false); } else { setCollapsed(p, stored, false); }
+    if (p.btn && p.sb) {
+      p.btn.setAttribute('aria-controls', 'fw-sidebar');
+      document.addEventListener('click', function (e) {
+        if (p.btn.contains(e.target)) {
+          if (isPhone()) { setPhoneOpen(p, !p.sb.classList.contains('mobile-open')); }
+          else { setCollapsed(p, !p.sb.classList.contains('collapsed'), true); }
+        } else if (isPhone() && p.sb.classList.contains('mobile-open') && !p.sb.contains(e.target)) {
+          setPhoneOpen(p, false);
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && p.sb.classList.contains('mobile-open')) { setPhoneOpen(p, false); }
+      });
+      // rotating a tablet across the breakpoint must not leave a stale state
+      window.addEventListener('resize', function () {
+        if (!isPhone() && p.sb.classList.contains('mobile-open')) { setPhoneOpen(p, false); }
       });
     }
     // <form data-confirm="question"> asks before submitting
