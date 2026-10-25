@@ -445,3 +445,13 @@ def job_get(job_id):
     if jr is None or (jr["user_id"] != g.user.id and not g.user.is_admin):
         return api_error("not_found", "No such job.", 404)
     return ai_loop.job_answer(jr)
+
+
+@bp.get("/ai/profiles")
+@login_required
+def ai_profiles():
+    """The enabled AI profiles an author may pick: never the key, not even "set"."""
+    from ..profiles import list_profiles
+    rows = list_profiles(db.get(), enabled_only=True)
+    return [{"id": r["id"], "name": r["name"], "adapter": r["adapter"], "model": r["model"]}
+            for r in rows], 200
