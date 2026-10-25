@@ -35,7 +35,7 @@ bp = Blueprint("chat", __name__, url_prefix="/api")
 def _chat(cid: int):
     conn = db.get()
     c = conn.execute("SELECT * FROM chats WHERE id = ?", (cid,)).fetchone()
-    if c is None or (c["user_id"] != g.user.id and not g.user.is_admin):
+    if c is None or c["user_id"] != g.user.id:    # a conversation is its author's alone
         return None, api_error("not_found", "No such conversation.", 404)
     _row, err = _project(c["project_id"])
     if err:

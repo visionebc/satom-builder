@@ -117,24 +117,37 @@
     <div id="im-out" class="ed-dialog-out"></div>
   </dialog>
 
-  <dialog class="ed-dialog ed-dialog-wide" id="dlg-ai" aria-labelledby="ai-title">
-    <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="ai-title">Generate with AI</h2>
-      <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ai-close" aria-label="Close"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
-    <p class="ed-help">The model gets the author guide, the target schema, the saved draft and your text. Never data rows, never secrets. Its draft is checked by the rules pack; problems left after the repair rounds are shown, never fixed silently. For a conversation with files and images that is kept, use the <strong>Assistant</strong> tab.</p>
-    <div class="ed-grid ed-grid-3">
-      <div class="ed-field ed-span-2"><label class="form-label ed-label" for="ai-profile">AI profile</label><select class="form-select form-select-sm" id="ai-profile"><option value="">Loading…</option></select></div>
-      <div class="ed-field"><label class="form-label ed-label" for="ai-rounds">Repair rounds (at most)</label><input class="form-control form-control-sm" id="ai-rounds" type="number" min="1" max="10" value="3"></div>
+  <dialog class="ed-dialog ed-dialog-wide ed-ai" id="dlg-ai" aria-labelledby="ai-title">
+    <div class="ed-dialog-head"><h2 class="ed-dialog-title" id="ai-title">AI</h2>
+      <div class="ed-inline">
+        <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ai-min" aria-label="Minimize (the AI goes on working)" title="Minimize (the AI goes on working)"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
+        <button type="button" class="btn btn-sm btn-fw-outline ed-icon-btn" id="ai-close" aria-label="Close" title="Close (while the AI works, it is minimized)"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div></div>
+    <p class="ed-help">The model gets the author guide, the target schema, the saved draft and your text -- in a conversation, also your earlier requests and what they came to. Never data rows, never secrets. Its draft is checked by the rules pack; problems left after the repair rounds are shown, never fixed silently. It runs on the server: minimize this window and go on working. Your conversations are kept for you and this project only.</p>
+    <div class="ed-ai-grid">
+      <aside class="ed-ai-side" aria-label="Your conversations on this project">
+        <button type="button" class="btn btn-sm btn-fw-primary" id="ai-new"><i class="bi bi-plus-lg" aria-hidden="true"></i> New conversation</button>
+        <div class="ed-ai-threads" id="ai-threads"></div>
+      </aside>
+      <section class="ed-ai-main">
+        <div class="ed-ai-thread-head" id="ai-thread-head"></div>
+        <div class="ed-ai-thread" id="ai-thread" aria-label="Conversation"></div>
+        <div id="ai-activity"></div>
+        <ol class="ed-rounds" id="ai-rounds-out" aria-label="Rounds"></ol>
+        <div class="ed-status" id="ai-status" role="status" aria-live="polite"></div>
+        <div class="ed-grid ed-grid-3">
+          <div class="ed-field ed-span-2"><label class="form-label ed-label" for="ai-profile">AI profile</label><select class="form-select form-select-sm" id="ai-profile"><option value="">Loading…</option></select></div>
+          <div class="ed-field"><label class="form-label ed-label" for="ai-rounds">Repair rounds (at most)</label><input class="form-control form-control-sm" id="ai-rounds" type="number" min="1" max="10" value="3"></div>
+        </div>
+        <div class="ed-field"><label class="form-label ed-label" for="ai-prompt">What should it build or change?</label><textarea class="form-control form-control-sm" id="ai-prompt" rows="4"></textarea></div>
+        <div class="ed-inline">
+          <button type="button" class="btn btn-sm btn-fw-outline" id="ai-preview"><i class="bi bi-eye" aria-hidden="true"></i> What will be sent</button>
+          <button type="button" class="btn btn-sm btn-fw-primary" id="ai-generate"><i class="bi bi-stars" aria-hidden="true"></i> <span id="ai-generate-text">Generate</span></button>
+        </div>
+        <div id="ai-sent"></div>
+      </section>
     </div>
-    <div class="ed-field"><label class="form-label ed-label" for="ai-prompt">What should it build or change?</label><textarea class="form-control form-control-sm" id="ai-prompt" rows="5"></textarea></div>
-    <div class="ed-inline">
-      <button type="button" class="btn btn-sm btn-fw-outline" id="ai-preview"><i class="bi bi-eye" aria-hidden="true"></i> What will be sent</button>
-      <button type="button" class="btn btn-sm btn-fw-primary" id="ai-generate"><i class="bi bi-stars" aria-hidden="true"></i> Generate</button>
-    </div>
-    <div class="ed-status" id="ai-status" role="status" aria-live="polite"></div>
-    <div id="ai-sent"></div>
-    <div id="ai-activity"></div>
-    <ol class="ed-rounds" id="ai-rounds-out" aria-label="Rounds"></ol>
   </dialog>
+  <button type="button" class="ed-ai-pill" id="ai-pill" hidden aria-live="polite" title="Open the AI window"><i class="bi bi-stars" aria-hidden="true"></i> <span id="ai-pill-text"></span></button>
 </div>
 <script type="application/json" id="editor-boot">{{ {"project": project, "target": target, "csrf_token": csrf_token} | tojson }}</script>
 {% endblock %}

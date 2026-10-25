@@ -210,6 +210,19 @@ MIGRATIONS: list[list[str]] = [
             job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
             runner TEXT NOT NULL)""",
     ],
+    # 7 -- Generate as a conversation: each job is a turn of a thread (the
+    # author's request kept), so the AI dialog shows the history between the
+    # author and the AI and can continue it. A thread belongs to the user and
+    # project of its jobs; nobody else lists or continues it.
+    [
+        """CREATE TABLE IF NOT EXISTS job_turns (
+            job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+            thread TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            profile TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL)""",
+        "CREATE INDEX IF NOT EXISTS job_turns_thread ON job_turns(thread, created_at)",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

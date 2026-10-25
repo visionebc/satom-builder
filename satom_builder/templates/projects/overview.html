@@ -84,6 +84,10 @@
           <select class="form-select" id="sb-profile">{% for pr in profiles %}<option value="{{ pr.id }}">{{ pr.name }} ({{ pr.model }})</option>{% endfor %}</select></div>
         <div class="col-md-3"><label class="form-label" for="sb-rounds">Max rounds</label>
           <input class="form-control" id="sb-rounds" type="number" min="1" max="6" value="3"></div>
+        <div class="col-12"><label class="form-label" for="sb-thread">Conversation</label>
+          <select class="form-select" id="sb-thread"><option value="">New conversation</option></select>
+          <div class="sb-help">Your conversations with the AI on this project -- yours only. Continue one, or open it in the editor.</div>
+          <div id="sb-thread-view" class="mt-2"></div></div>
         <div class="col-12"><label class="form-label" for="sb-prompt">What do you want?</label>
           <textarea class="form-control" id="sb-prompt" rows="4" maxlength="20000" placeholder="For example: an app with a form that asks for a hostname and a diagram that looks it up in the ddi connection..."></textarea></div>
       </div>

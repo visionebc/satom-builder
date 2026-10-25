@@ -7,7 +7,7 @@ import * as M from "./model.js";
 import { clone, deepEqual } from "./util.js";
 import { resolveTarget, tabsFor } from "./where.js";
 import { computeChoices } from "./choices.js";
-import { renderActivity } from "./activity.js";
+import { renderActivity, liveLine } from "./activity.js";
 import * as F from "./fields.js";
 import formTab from "./tabs/form.js";
 import diagramTab from "./tabs/diagram.js";
@@ -412,11 +412,21 @@ function boot() {
   $("im-close").addEventListener("click", () => { clearSecrets(); dlgI.close(); });
   dlgI.addEventListener("close", clearSecrets);
 
-  /* ── AI ────────────────────────────────────────────────────────────── */
+  /* ── AI: Generate as a conversation ──────────────────────────────────
+   * The job runs on the server; this window only follows it. Minimize (or
+   * close / Esc while it works) folds it into a pill that stays on every tab
+   * and opens it again; on load, a job that still works comes back in the
+   * pill. The history is this author's conversations on this project (the
+   * server never returns anyone else's); a conversation is continued from
+   * the project as saved, with its earlier requests sent along. A draft that
+   * arrives while the author changed the editor is never loaded over their
+   * changes: it waits in the conversation ("Load this draft"). */
   const dlgA = $("dlg-ai");
-  const A = { profiles: null, job: null, timer: null };
-  $("btn-ai").addEventListener("click", async () => {
-    dlgA.showModal();
+  const A = { profiles: null, job: null, timer: null, thread: null, threads: [], minimized: false, done: null, pillText: "" };
+  const aiRunning = () => !!A.job;
+  const when = (ts) => (ts ? new Date(ts * 1000).toLocaleString() : "");
+
+  async function loadProfiles() {
     if (A.profiles) return;
     const sel = $("ai-profile");
     const st = $("ai-status");
@@ -426,17 +436,128 @@ function boot() {
       clear(sel);
       if (!A.profiles.length) sel.appendChild(h("option", { value: "", text: "No AI profile: add one under AI profiles" }));
       A.profiles.forEach((p) => sel.appendChild(h("option", { value: p.id, text: `${p.name} (${p.adapter}, ${p.model})` })));
-      say(st, "", "info");
+      if (!aiRunning()) say(st, "", "info");
     } catch (e) { A.profiles = null; say(st, "AI profiles could not be loaded: " + e.message, "bad"); }
+  }
+  function pill() {
+    const p = $("ai-pill");
+    const show = A.minimized && (aiRunning() || !!A.done);
+    p.hidden = !show;
+    if (!show) return;
+    $("ai-pill-text").textContent = A.pillText || "The AI is working…";
+    p.dataset.state = aiRunning() ? "run" : A.done;
+  }
+  function openAI() {
+    if (!dlgA.open) dlgA.showModal();
+    A.minimized = false;
+    if (!aiRunning()) A.done = null;
+    pill();
+    loadProfiles();
+    loadHistory();
+  }
+  function minimizeAI() {
+    if (dlgA.open) dlgA.close();
+    A.minimized = true;
+    pill();
+  }
+  function closeAI() {
+    if (aiRunning()) { minimizeAI(); ctx.say("The AI goes on working: it is in the pill at the bottom right.", "info"); return; }
+    if (dlgA.open) dlgA.close();
+    A.minimized = false;
+    A.done = null;
+    pill();
+  }
+  $("btn-ai").addEventListener("click", openAI);
+  $("ai-min").addEventListener("click", minimizeAI);
+  $("ai-close").addEventListener("click", closeAI);
+  dlgA.addEventListener("cancel", (e) => { e.preventDefault(); closeAI(); });
+  $("ai-pill").addEventListener("click", openAI);
+
+  async function loadHistory() {
+    try { A.threads = (await ctx.api.aiHistory(ctx.project.id)).threads || []; } catch (e) { A.threads = A.threads || []; }
+    renderThreads();
+    renderThread();
+    return A.threads;
+  }
+  function statusBadge(u) {
+    if (u.status === "running") return badge("working…", "info");
+    if (u.status === "failed") return badge("failed", "danger");
+    if (!u.has_draft) return badge("no draft", "secondary");
+    return u.ok ? badge("passes the rules", "success") : badge("problems left", "warning");
+  }
+  function renderThreads() {
+    const box = clear($("ai-threads"));
+    if (!A.threads.length) { box.appendChild(h("p", { class: "ed-help", text: "No conversation yet. What you ask is kept here, for you and this project only." })); return; }
+    A.threads.forEach((t) => {
+      const b = h("button", { type: "button", class: "ed-subnav-item ed-ai-thread-item" + (t.thread === A.thread ? " is-selected" : ""), "aria-current": t.thread === A.thread ? "true" : null, dataset: { thread: t.thread } },
+        h("strong", { text: t.title || "(no text)" }),
+        h("small", { class: "ed-muted", text: `${t.turns.length} request(s) · ${when(t.updated_at)}` }),
+        t.running ? badge("working…", "info") : null);
+      b.addEventListener("click", () => { A.thread = t.thread; renderThreads(); renderThread(); });
+      box.appendChild(b);
+    });
+  }
+  function renderThread() {
+    const t = A.threads.find((x) => x.thread === A.thread);
+    const head = clear($("ai-thread-head"));
+    const box = clear($("ai-thread"));
+    $("ai-generate-text").textContent = t ? "Continue" : "Generate";
+    if (!t) { head.appendChild(h("p", { class: "ed-help", text: "New conversation. It stays in the list: come back to it and continue it when you want." })); return; }
+    head.appendChild(h("p", { class: "ed-help" }, h("strong", { text: t.title }), " -- continuing: the AI starts from the project as saved and gets these requests and what they came to."));
+    t.turns.forEach((u) => {
+      box.appendChild(h("div", { class: "ed-msg ed-msg-user" }, h("div", { class: "ed-msg-meta", text: "You · " + when(u.created_at) }), h("div", { class: "ed-msg-text", text: u.prompt })));
+      const current = u.job_id === A.job;
+      const ai = h("div", { class: "ed-msg ed-msg-ai", dataset: { job: u.job_id } },
+        h("div", { class: "ed-msg-meta" }, "AI", u.profile ? " · " + u.profile : "", " ", statusBadge(u)),
+        h("div", { class: "ed-msg-text", text: current ? "Working on it: follow it below." : u.outcome }));
+      if (!current && u.status !== "running") {
+        const act = h("div");
+        const d = h("details", { class: "ed-act-wrap" }, h("summary", { text: "What it did" }), act);
+        d.addEventListener("toggle", async () => {
+          if (!d.open || act.firstChild) return;
+          try { const j = await ctx.api.job(u.job_id); renderActivity(act, j.progress, { key: "gen-" + u.job_id, running: false }); } catch (e) { act.appendChild(h("div", { class: "ed-tone-bad", text: e.message })); }
+        });
+        ai.appendChild(d);
+        if (u.has_draft) {
+          const b = button("Load this draft into the editor", { class: "btn btn-sm btn-fw-outline ed-ai-load", dataset: { job: u.job_id } }, "bi-box-arrow-in-down");
+          b.addEventListener("click", () => loadDraft(u.job_id, false));
+          ai.appendChild(h("div", { class: "ed-inline" }, b));
+        }
+      }
+      box.appendChild(ai);
+    });
+    box.scrollTop = box.scrollHeight;
+  }
+  $("ai-new").addEventListener("click", () => {
+    A.thread = null;
+    renderThreads();
+    renderThread();
+    $("ai-prompt").focus();
   });
-  $("ai-close").addEventListener("click", () => dlgA.close());
+
+  /* A turn's draft into the editor as unsaved changes (the author saves it). */
+  async function loadDraft(jobId, auto) {
+    const st = $("ai-status");
+    let j;
+    try { j = await ctx.api.job(jobId); } catch (e) { say(st, e.message, "bad"); return false; }
+    if (!j.project) { say(st, "That request left no draft.", "bad"); return false; }
+    if (!auto && M.isDirty(ctx.project, ctx.saved) && !window.confirm("Your unsaved changes in the editor will be replaced by this draft. Go on?")) return false;
+    ctx.project = j.project;
+    syncDetails();
+    ctx.changed();
+    if (j.project.last_check) setCheck(checkOf(j.project.last_check), "Check of the generated draft");
+    else keepFocus(() => renderActive());
+    if (!auto) { say(st, "Draft loaded into the editor. Save to keep it.", "ok"); ctx.say("Draft loaded into the editor. Save to keep it.", "ok"); }
+    return true;
+  }
+
   $("ai-preview").addEventListener("click", async () => {
     const st = $("ai-status"), out = clear($("ai-sent"));
     if (!$("ai-profile").value) { say(st, "Pick an AI profile.", "bad"); return; }
     say(st, "Saving and assembling the request…", "busy");
     try {
       if (!(await ctx.ensureSaved())) { say(st, "Not saved: nothing assembled.", "bad"); return; }
-      const r = await ctx.api.generatePreview(ctx.project.id, $("ai-profile").value, $("ai-prompt").value);
+      const r = await ctx.api.generatePreview(ctx.project.id, $("ai-profile").value, $("ai-prompt").value, A.thread);
       out.appendChild(h("div", { class: "ed-grid ed-grid-2" },
         h("div", null, h("strong", { text: "Sends" }), h("ul", null, (r.sends || []).map((x) => h("li", { text: x })))),
         h("div", null, h("strong", { text: "Never sends" }), h("ul", null, (r.never_sends || []).map((x) => h("li", { text: x }))))));
@@ -448,17 +569,24 @@ function boot() {
   });
   $("ai-generate").addEventListener("click", async () => {
     const st = $("ai-status");
+    if (aiRunning()) { say(st, "The AI is still working on your last request.", "bad"); return; }
     if (!$("ai-profile").value) { say(st, "Pick an AI profile.", "bad"); return; }
     if (!$("ai-prompt").value.trim()) { say(st, "Describe what you want first.", "bad"); return; }
     try {
       if (!(await ctx.ensureSaved())) { say(st, "Not saved: generation not started.", "bad"); return; }
       const rounds = Math.max(1, Math.min(10, Number($("ai-rounds").value) || 3));
-      const r = await ctx.api.generate(ctx.project.id, $("ai-profile").value, $("ai-prompt").value, rounds);
+      const r = await ctx.api.generate(ctx.project.id, $("ai-profile").value, $("ai-prompt").value, rounds, A.thread);
       A.job = r.job_id;
+      A.thread = r.thread || A.thread;
+      A.done = null;
+      A.pillText = "";
       $("ai-generate").disabled = true;
+      $("ai-prompt").value = "";
       clear($("ai-sent"));
-      say(st, "Started: the steps and what the model writes show below as they happen.", "busy");
+      clear($("ai-rounds-out"));
+      say(st, "Started: the steps and what the model writes show below as they happen. You can minimize this window.", "busy");
       renderActivity($("ai-activity"), null, { key: "gen-" + A.job, running: true });
+      await loadHistory();
       poll();
     } catch (e) { say(st, e.message, "bad"); }
   });
@@ -466,31 +594,78 @@ function boot() {
     clearTimeout(A.timer);
     const st = $("ai-status");
     let j;
-    try { j = await ctx.api.job(A.job); } catch (e) { say(st, e.message, "bad"); $("ai-generate").disabled = false; return; }
+    try { j = await ctx.api.job(A.job); } catch (e) { say(st, e.message, "bad"); A.job = null; $("ai-generate").disabled = false; pill(); return; }
     renderActivity($("ai-activity"), j.progress, { key: "gen-" + A.job, running: j.status === "running" });
     const steps = (j.progress && j.progress.steps) || [];
     if (j.status === "running" && steps.length) say(st, steps[steps.length - 1].text + "…", "busy");
     const box = clear($("ai-rounds-out"));
     (j.rounds || []).forEach((r) => box.appendChild(h("li", null, badge(`round ${r.n}`, r.ok ? "success" : "warning"), " ", r.ok ? "no problems" : `${(r.problems || []).length} problem(s)`,
       (r.problems || []).length ? h("ul", null, r.problems.map((p) => h("li", { text: (p.where ? p.where + ": " : "") + (p.message || p) }))) : null)));
-    if (j.status === "running") { A.timer = setTimeout(poll, 1500); return; }
+    if (j.status === "running") {
+      const lv = j.progress && j.progress.live;
+      A.pillText = (lv ? liveLine(lv, true, j.progress.server_now) : "") || (steps.length ? steps[steps.length - 1].text : "The AI is working…");
+      pill();
+      A.timer = setTimeout(poll, 1500);
+      return;
+    }
+    const finished = A.job;
+    A.job = null;
     $("ai-generate").disabled = false;
-    if (j.status === "failed") { say(st, "Generation failed: " + (j.error || "no detail"), "bad"); ctx.say("AI generation failed.", "bad"); return; }
-    // The job does not save (the author applies the draft): the generated
-    // draft becomes unsaved changes, kept in the local draft until Save.
-    // Marking it saved, as this did, lost it on the next reload.
-    const fresh = j.project || (await ctx.api.project(ctx.project.id));
-    ctx.project = fresh;
-    if (!j.project) ctx.saved = clone(fresh);
-    syncDetails();
-    ctx.changed();
-    if (fresh.last_check) setCheck(checkOf(fresh.last_check), "Check of the generated draft");
-    else keepFocus(() => renderActive());
+    loadHistory();
+    if (j.status === "failed") {
+      say(st, "Generation failed: " + (j.error || "no detail"), "bad");
+      ctx.say("AI generation failed.", "bad");
+      A.done = "bad";
+      A.pillText = "The AI request failed: open to see why";
+      pill();
+      return;
+    }
     const rounds = j.rounds || [];
     const last = rounds[rounds.length - 1];
-    const msg = `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".") + (j.project ? " Save to keep it." : "");
+    let tail = "";
+    if (j.project && M.isDirty(ctx.project, ctx.saved)) {
+      // the author changed the editor while the AI worked: never overwrite it
+      tail = " Your editor has unsaved changes, so it was not loaded: use “Load this draft into the editor” in the conversation.";
+    } else if (j.project) {
+      await loadDraft(finished, true);
+      tail = " Save to keep it.";
+    } else {
+      const fresh = await ctx.api.project(ctx.project.id);
+      ctx.project = fresh;
+      ctx.saved = clone(fresh);
+      syncDetails();
+      ctx.changed();
+      keepFocus(() => renderActive());
+    }
+    const msg = `Draft generated in ${rounds.length} round(s)` + (last && !last.ok ? `, ${(last.problems || []).length} problem(s) left: they are shown in Checks, never fixed silently.` : ".") + tail;
     say(st, msg, last && !last.ok ? "info" : "ok");
     ctx.say(msg, last && !last.ok ? "info" : "ok");
+    A.done = last && !last.ok ? "warn" : "ok";
+    A.pillText = "The AI finished: " + (last && !last.ok ? "draft with problems left" : "draft ready") + " -- open";
+    pill();
+  }
+  /* A job that still works when the editor opens (a reload, another tab,
+   * the project page) comes back: in the pill, followed as before. */
+  function resumeAI() {
+    // read now: activating a tab rewrites the hash before the history answers
+    const want = (/#ai=([0-9a-f]{32})/.exec(location.hash) || [])[1];
+    loadHistory().then((threads) => {
+      const t = (threads || []).find((x) => x.running);
+      if (t) {
+        const turn = t.turns.find((u) => u.status === "running");
+        A.thread = t.thread;
+        A.job = turn.job_id;
+        A.minimized = !want;
+        $("ai-generate").disabled = true;
+        renderThreads();
+        renderThread();
+        poll();
+      }
+      if (want) {
+        if (!t) A.thread = (threads || []).some((x) => x.thread === want) ? want : null;
+        openAI();
+      } else pill();
+    });
   }
 
   /* ── local draft ───────────────────────────────────────────────────── */
@@ -533,6 +708,7 @@ function boot() {
   ctx.checkSource = ctx.check ? "Last check stored with the project" : "";
   renderChecks();
   offerDraft();
+  resumeAI();
   const want = (/#tab=([a-z]+)/.exec(location.hash) || [])[1];
   const tid = ctx.project.target_id || (ctx.target && ctx.target.id);
   if (tid) {

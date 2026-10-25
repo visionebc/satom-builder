@@ -31,6 +31,38 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   The project's main page shows it too: its Generate said only "Status:
   running" (requested: "show the state as in the dialog"); now the status
   names the current step and the same activity follows.
+- **The AI window is a conversation you can minimize, recover and continue.**
+  Requested: "let the process go on in parallel, minimize the window and get
+  it back -- if it is closed it is lost; see the history between the user and
+  the AI and continue it; that history only of the user and project, never
+  mixed". In the editor:
+  - **Minimize** (or close / Esc while it works) folds the window into a pill
+    at the bottom right with the live line ("Round 2/3 · gpt-oss:120b ·
+    writing the answer · ≈640 tokens · 1:12"); it stays on every tab while you
+    go on editing, and a click opens the window again. The job runs on the
+    server either way.
+  - **Nothing is lost on close or reload**: on load the editor asks for your
+    conversations and a Generate that still works comes back in the pill
+    (also from the project page, or another browser).
+  - **History**: your conversations on this project, each request with what it
+    came to (passes the rules / problems left / failed), what the AI did, and
+    "Load this draft into the editor".
+  - **Continue**: the next request goes into the same conversation; the AI gets
+    the project as saved plus your earlier requests and what each came to
+    ("What will be sent" shows exactly that). "New conversation" starts apart.
+  - A draft that arrives while you changed the editor is never loaded over
+    your changes: it waits in the conversation.
+  The project page picks a conversation to continue, shows it, links it into
+  the editor (`#ai=<thread>`) and follows a Generate that still works.
+  Schema 7 (`job_turns`) keeps each request; `GET /api/projects/<id>/ai-history`
+  answers the caller's own conversations on that project only.
+
+### Changed
+
+- **Conversations are their author's alone.** A Generate job, its history and
+  an assistant conversation answer only the user who started them (an
+  administrator got them by id before); a thread of another project or user
+  cannot be continued (404, the same as a missing one).
 
 ### Fixed
 

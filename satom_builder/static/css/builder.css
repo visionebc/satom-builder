@@ -160,3 +160,6 @@
 @keyframes ed-act-spin { to { transform: rotate(360deg); } }
 @keyframes ed-act-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .ed-act-spin, .ed-act-pulse { animation: none; } }
+/* the project page's view of one AI conversation */
+.sb-turn { border-left: 3px solid var(--fw-border, #DCE4F3); padding: 3px 0 3px 10px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.sb-turn-ai { margin-top: 1px; }

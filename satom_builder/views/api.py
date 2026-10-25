@@ -7,6 +7,7 @@ Every project route checks that the caller owns the project or is an admin.
 from __future__ import annotations
 
 import json
+import uuid
 
 from flask import Blueprint, current_app, g, make_response, request
 
@@ -402,6 +403,23 @@ def _generation_context(row, body):
     return prof, t, snap, pack, prompt
 
 
+def _thread_prompt(row, body, prompt):
+    """-> (thread, what the model gets as the author's text, error). A new
+    conversation without "thread"; with one, only a thread of this user AND
+    project (404 otherwise, the same answer as a missing one), not while a
+    turn of it is still working (409)."""
+    thread = body.get("thread")
+    if thread in (None, ""):
+        return uuid.uuid4().hex, prompt, None
+    turns = ai_loop.thread_turns(db.get(), thread, g.user.id, row["id"])
+    if not turns:
+        return None, None, api_error("not_found", "No such conversation.", 404)
+    if any(t["status"] == "running" for t in turns):
+        return None, None, api_error("busy", "This conversation is still working: wait for its "
+                                     "answer, or start a new conversation.", 409)
+    return thread, ai_loop.history_text(turns, prompt), None
+
+
 @bp.post("/projects/<int:pid>/generate/preview")
 @login_required
 def generate_preview(pid):
@@ -416,8 +434,11 @@ def generate_preview(pid):
         guide = pack.author_guide(snap)
     except Exception as exc:  # noqa: BLE001
         return _fail(exc)
+    thread, author_text, err = _thread_prompt(row, body, prompt)
+    if err:
+        return err
     proj = projects.to_api(db.get(), row)
-    system, user = ai_loop.build_prompt(guide, snap, proj, prompt)
+    system, user = ai_loop.build_prompt(guide, snap, proj, author_text)
     return {"system": system, "user": user,
             "bytes": len(system.encode("utf-8")) + len(user.encode("utf-8")),
             "sends": ["author guide", "schema", "draft", "your text"],
@@ -447,28 +468,43 @@ def generate(pid):
         adapter = adapter_for(prof)
     except Exception as exc:  # noqa: BLE001
         return _fail(exc)
+    thread, author_text, err = _thread_prompt(row, body, prompt)
+    if err:
+        return err
     conn = db.get()
     proj = projects.to_api(conn, row)
     assets = projects.asset_blobs(conn, pid)
     min_satom = str(snap.get("satom_version") or "")
 
     def work(job_id, jconn, update, progress):
-        return ai_loop.run(adapter, pack, snap, proj, prompt, assets,
+        return ai_loop.run(adapter, pack, snap, proj, author_text, assets,
                            max_rounds=max_rounds, on_round=update, min_satom=min_satom,
                            progress=progress)
 
     job_id = ai_loop.start_job(current_app._get_current_object(), project_id=pid,
-                               user_id=g.user.id, work=work)
+                               user_id=g.user.id, work=work,
+                               turn={"thread": thread, "prompt": prompt, "profile": prof["name"]})
     audit("generate.start", row["slug"], profile=prof["name"], job=job_id,
-          max_rounds=max_rounds)
-    return {"job_id": job_id}, 202
+          max_rounds=max_rounds, thread=thread)
+    return {"job_id": job_id, "thread": thread}, 202
+
+
+@bp.get("/projects/<int:pid>/ai-history")
+@login_required
+def ai_history(pid):
+    """This user's Generate conversations on this project -- nobody else's,
+    an administrator included: a conversation is between one author and the AI."""
+    row, err = _project(pid)
+    if err:
+        return err
+    return {"threads": ai_loop.ai_history(db.get(), g.user.id, pid)}
 
 
 @bp.get("/jobs/<job_id>")
 @login_required
 def job_get(job_id):
     jr = db.get().execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-    if jr is None or (jr["user_id"] != g.user.id and not g.user.is_admin):
+    if jr is None or jr["user_id"] != g.user.id:     # the author's alone, as the history
         return api_error("not_found", "No such job.", 404)
     return ai_loop.job_answer(jr, ai_loop.load_progress(db.get(), "job_progress", job_id))
 

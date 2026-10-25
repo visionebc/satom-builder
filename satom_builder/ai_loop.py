@@ -386,10 +386,95 @@ def with_now(progress):
     return progress
 
 
-def start_job(app, *, project_id: int, user_id: int, work) -> str:
+# --------------------------------------------------------------------------
+# Generate as a conversation (job_turns): history and continuation
+# --------------------------------------------------------------------------
+THREAD_RE = re.compile(r"^[0-9a-f]{32}$")
+HISTORY_TURNS = 12
+HISTORY_PROMPT_CHARS = 4000
+
+
+def thread_turns(conn, thread: str, user_id: int, project_id: int) -> list:
+    """The turns of *thread* that belong to this user AND project, oldest
+    first ([] for a thread of anybody else: no enumeration)."""
+    if not isinstance(thread, str) or not THREAD_RE.match(thread):
+        return []
+    return conn.execute(
+        "SELECT t.job_id, t.thread, t.prompt, t.profile, t.created_at, j.status, j.rounds, "
+        "j.error, j.result FROM job_turns t JOIN jobs j ON j.id = t.job_id "
+        "WHERE t.thread = ? AND j.user_id = ? AND j.project_id = ? ORDER BY t.created_at, t.rowid",
+        (thread, user_id, project_id)).fetchall()
+
+
+def turn_outcome(row) -> str:
+    """One line: what a turn came to (for the history and for the model)."""
+    if row["status"] == "running":
+        return "still working"
+    if row["status"] == "failed":
+        return "failed: " + (row["error"] or "no detail")[:300]
+    rounds = db.loads(row["rounds"], []) or []
+    res = db.loads(row["result"], {}) or {}
+    last = rounds[-1] if rounds else {}
+    if last.get("message_only"):
+        return "answered: " + (res.get("message") or "")[:500]
+    if last.get("ok"):
+        return f"a draft that passes SATOM's rules ({len(rounds)} round(s))"
+    probs = last.get("problems") or []
+    return (f"a draft with {len(probs)} problem(s) left: "
+            + "; ".join(f"{p.get('where', '?')}: {p.get('message', '')}" for p in probs[:3])[:600])
+
+
+def history_text(turns: list, new_prompt: str) -> str:
+    """The author's side of a continued conversation: the earlier requests and
+    what each came to (last :data:`HISTORY_TURNS`), then the new one. The
+    draft the model gets is the project as saved now -- what the author kept."""
+    parts = ["## The conversation so far",
+             "Earlier requests of the author in this conversation and what each came "
+             "to. The current draft (above) is what the author kept from them.\n"]
+    for r in turns[-HISTORY_TURNS:]:
+        prompt = (r["prompt"] or "").strip()
+        if len(prompt) > HISTORY_PROMPT_CHARS:
+            prompt = prompt[:HISTORY_PROMPT_CHARS] + " [...]"
+        parts.append(f"**Author:** {prompt}\n**Result:** {turn_outcome(r)}\n")
+    parts.append("## The author's new message\n\n" + new_prompt.strip())
+    return "\n".join(parts)
+
+
+def ai_history(conn, user_id: int, project_id: int, limit: int = 50) -> list:
+    """This user's Generate conversations on this project, newest first:
+    ``[{thread, title, updated_at, running, turns: [...]}]``."""
+    rows = conn.execute(
+        "SELECT t.job_id, t.thread, t.prompt, t.profile, t.created_at, j.status, j.rounds, "
+        "j.error, j.result, j.updated_at FROM job_turns t JOIN jobs j ON j.id = t.job_id "
+        "WHERE j.user_id = ? AND j.project_id = ? ORDER BY t.created_at, t.rowid",
+        (user_id, project_id)).fetchall()
+    threads: dict = {}
+    for r in rows:
+        rounds = db.loads(r["rounds"], []) or []
+        last = rounds[-1] if rounds else {}
+        th = threads.setdefault(r["thread"], {"thread": r["thread"], "title": "",
+                                              "updated_at": 0, "running": False, "turns": []})
+        if not th["title"]:
+            lines = (r["prompt"] or "").strip().splitlines()
+            th["title"] = lines[0][:80] if lines else ""
+        th["updated_at"] = max(th["updated_at"], r["updated_at"] or r["created_at"])
+        th["running"] = th["running"] or r["status"] == "running"
+        th["turns"].append({"job_id": r["job_id"], "prompt": r["prompt"], "profile": r["profile"],
+                            "created_at": r["created_at"], "status": r["status"],
+                            "ok": bool(last.get("ok")) if r["status"] == "done" else False,
+                            "rounds": len(rounds), "outcome": turn_outcome(r),
+                            "has_draft": r["status"] == "done" and bool(
+                                (db.loads(r["result"], {}) or {}).get("project"))})
+    out = sorted(threads.values(), key=lambda t: t["updated_at"], reverse=True)
+    return out[:limit]
+
+
+def start_job(app, *, project_id: int, user_id: int, work, turn: dict | None = None) -> str:
     """Run ``work(job_id, conn, update, progress)`` in a daemon thread.
     ``update(rounds)`` persists the rounds, ``progress`` (a
-    :class:`progress.Progress`) what the job is doing. -> the job id."""
+    :class:`progress.Progress`) what the job is doing. *turn* ({thread,
+    prompt, profile}) makes the job a turn of a Generate conversation.
+    -> the job id."""
     from .progress import Progress
     job_id = uuid.uuid4().hex
     with db.session(app.config["DB_PATH"]) as conn:
@@ -399,6 +484,10 @@ def start_job(app, *, project_id: int, user_id: int, work) -> str:
                      (job_id, project_id, user_id, "generate", "running", "[]", t, t))
         from .chat import runner_id
         conn.execute("INSERT INTO job_runners (job_id, runner) VALUES (?, ?)", (job_id, runner_id()))
+        if turn:
+            conn.execute("INSERT INTO job_turns (job_id, thread, prompt, profile, created_at) "
+                         "VALUES (?,?,?,?,?)", (job_id, turn["thread"], turn["prompt"],
+                                                turn.get("profile") or "", t))
 
     def target():
         with app.app_context(), db.session(app.config["DB_PATH"]) as conn:

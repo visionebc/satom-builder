@@ -61,10 +61,11 @@ export class Api {
   library(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/library${refresh ? "?refresh=1" : ""}`); }
   snapshot(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/snapshot${refresh ? "?refresh=1" : ""}`); }
   aiProfiles() { return this.req("GET", "/api/ai/profiles"); }
-  generatePreview(id, profileId, prompt) { return this.req("POST", `/api/projects/${id}/generate/preview`, { profile_id: profileId, prompt }); }
-  generate(id, profileId, prompt, maxRounds) {
-    return this.req("POST", `/api/projects/${id}/generate`, { profile_id: profileId, prompt, max_rounds: maxRounds });
+  generatePreview(id, profileId, prompt, thread) { return this.req("POST", `/api/projects/${id}/generate/preview`, { profile_id: profileId, prompt, thread: thread || undefined }); }
+  generate(id, profileId, prompt, maxRounds, thread) {
+    return this.req("POST", `/api/projects/${id}/generate`, { profile_id: profileId, prompt, max_rounds: maxRounds, thread: thread || undefined });
   }
+  aiHistory(id) { return this.req("GET", `/api/projects/${id}/ai-history`); }
   job(jobId) { return this.req("GET", `/api/jobs/${encodeURIComponent(jobId)}`); }
   testdata(id) { return this.req("GET", `/api/projects/${id}/testdata`); }
   saveTestdata(id, data) { return this.req("PUT", `/api/projects/${id}/testdata`, { data }); }

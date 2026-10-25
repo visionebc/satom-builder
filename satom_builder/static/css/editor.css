@@ -304,3 +304,27 @@ body.ed-checks-open .ed-checks { display: block; }
 .ed-ds-group .ed-ds { padding: 3px 0 5px; border-top: 1px solid var(--ed-border-light); }
 .db-add-list { list-style: none; margin: 6px 0; padding: 0; max-height: 360px; overflow: auto; }
 .db-add-list li { padding: 3px 0; border-top: 1px solid var(--ed-border-light); font-size: 12.5px; overflow-wrap: anywhere; }
+
+/* The AI window: your conversations (left), the open one, the composer; the
+ * pill that keeps a minimized job on screen on every tab */
+.ed-ai.ed-dialog-wide { width: min(1120px, 96vw); }
+.ed-ai-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; align-items: start; }
+.ed-ai-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ed-ai-threads { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; }
+.ed-ai-thread-item { width: 100%; align-items: flex-start; overflow-wrap: anywhere; }
+.ed-ai-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ed-ai-thread-head p { margin: 0; }
+.ed-ai-thread { display: flex; flex-direction: column; gap: 8px; max-height: 38vh; overflow: auto; padding: 2px; }
+.ed-ai-thread:empty { display: none; }
+.ed-ai-pill { position: fixed; right: 18px; bottom: 18px; z-index: 1060; display: flex; align-items: center; gap: 8px; max-width: min(600px, calc(100vw - 36px)); padding: 9px 14px; border: 1px solid var(--ed-border, #DCE4F3); border-left: 4px solid var(--ed-info, #0A5F6C); border-radius: 8px; background: #FFFFFF; color: var(--ed-text, #0C1B33); font-size: 12.5px; font-weight: 600; text-align: left; box-shadow: 0 6px 22px rgba(12, 27, 51, .18); cursor: pointer; overflow-wrap: anywhere; }
+.ed-ai-pill[hidden] { display: none; }
+.ed-ai-pill[data-state="run"] > .bi { animation: ed-act-pulse 1.6s ease-in-out infinite; }
+.ed-ai-pill[data-state="ok"] { border-left-color: var(--ed-ok, #15692A); }
+.ed-ai-pill[data-state="warn"] { border-left-color: var(--ed-warn, #7A5700); }
+.ed-ai-pill[data-state="bad"] { border-left-color: var(--ed-bad, #8B1C2A); }
+.ed-ai-pill:focus-visible { outline: 2px solid var(--ed-accent, #0A3F9F); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .ed-ai-pill[data-state="run"] > .bi { animation: none; } }
+@media (max-width: 760px) {
+  .ed-ai-grid { grid-template-columns: 1fr; }
+  .ed-ai-threads { max-height: 24vh; }
+}

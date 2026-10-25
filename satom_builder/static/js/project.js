@@ -139,15 +139,72 @@
       busy(b, true);
       var out = $('sb-rounds-out');
       clear(out);
-      SB.api('POST', base + '/generate', {profile_id: $('sb-profile').value, prompt: $('sb-prompt').value,
-                                          max_rounds: parseInt($('sb-rounds').value, 10) || 3})
+      var body = {profile_id: $('sb-profile').value, prompt: $('sb-prompt').value,
+                  max_rounds: parseInt($('sb-rounds').value, 10) || 3};
+      if ($('sb-thread') && $('sb-thread').value) { body.thread = $('sb-thread').value; }
+      SB.api('POST', base + '/generate', body)
         .then(function (r) {
           if (!r.ok) { busy(b, false); showError(out, r.data, r.status); return; }
           out.appendChild(el('p', {'class': 'sb-help', text: 'Generating (job ' + r.data.job_id.slice(0, 8) + ')...'}));
+          $('sb-prompt').value = '';
+          loadHistory(r.data.thread);
           poll(r.data.job_id, b);
         });
     }
   };
+
+  // ── the author's conversations with the AI on this project ─────────────
+  // (GET .../ai-history answers this user's only). A Generate that still
+  // works when the page opens is followed again: closing the page loses nothing.
+  var threads = [];
+  function when(ts) { return ts ? new Date(ts * 1000).toLocaleString() : ''; }
+  function renderThreadView() {
+    var view = $('sb-thread-view');
+    if (!view) { return; }
+    clear(view);
+    var id = $('sb-thread').value;
+    var t = threads.filter(function (x) { return x.thread === id; })[0];
+    if (!t) { return; }
+    t.turns.forEach(function (u) {
+      view.appendChild(el('div', {'class': 'sb-turn'}, [
+        el('div', {'class': 'sb-turn-you'}, [el('strong', {text: 'You: '}), u.prompt]),
+        el('div', {'class': 'sb-turn-ai sb-help'}, ['AI' + (u.profile ? ' (' + u.profile + ')' : '') + ' \u00b7 ' + when(u.created_at) + ': ' + u.outcome])]));
+    });
+    var open = el('a', {'class': 'btn btn-sm btn-outline-secondary mt-1', href: '/projects/' + pid + '/edit#ai=' + t.thread},
+                  [el('i', {'class': 'bi bi-box-arrow-up-right me-1'}), 'Open this conversation in the editor']);
+    view.appendChild(open);
+  }
+  function loadHistory(select) {
+    var sel = $('sb-thread');
+    if (!sel) { return Promise.resolve([]); }
+    return SB.api('GET', base + '/ai-history').then(function (r) {
+      if (!r.ok) { return []; }
+      threads = r.data.threads || [];
+      var keep = select || sel.value;
+      clear(sel);
+      sel.appendChild(el('option', {value: '', text: 'New conversation'}));
+      threads.forEach(function (t) {
+        sel.appendChild(el('option', {value: t.thread, text: (t.running ? '\u23f3 ' : '') + (t.title || '(no text)') +
+          ' \u2014 ' + t.turns.length + ' request(s), ' + when(t.updated_at)}));
+      });
+      sel.value = threads.some(function (t) { return t.thread === keep; }) ? keep : '';
+      renderThreadView();
+      return threads;
+    });
+  }
+  if ($('sb-thread')) {
+    $('sb-thread').addEventListener('change', renderThreadView);
+    loadHistory().then(function (list) {
+      var t = (list || []).filter(function (x) { return x.running; })[0];
+      if (!t) { return; }
+      var turn = t.turns.filter(function (u) { return u.status === 'running'; })[0];
+      $('sb-thread').value = t.thread;
+      renderThreadView();
+      var btn = document.querySelector('[data-sb-action="generate"]');
+      busy(btn, true);
+      poll(turn.job_id, btn);
+    });
+  }
 
   function renderRounds(job) {
     var out = $('sb-rounds-out');
@@ -198,7 +255,7 @@
       if (!r.ok) { busy(btn, false); showError($('sb-rounds-out'), r.data, r.status); return; }
       renderRounds(r.data);
       if (r.data.status === 'running') { window.setTimeout(function () { poll(jobId, btn); }, 2000); }
-      else { busy(btn, false); }
+      else { busy(btn, false); loadHistory(); }
     });
   }
 
