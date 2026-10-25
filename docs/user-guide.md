@@ -141,6 +141,10 @@ The overview's **Generate with AI** card drafts or changes the project with a mo
 3. **Generate** starts a job. The model answers with one JSON draft. The Builder builds the package and runs the local check. Problems go back to the model with the draft, round after round, up to *Max rounds*. An answer that is not a JSON draft counts as a round, and the error goes back to the model.
 4. Each round is listed with its problems. When the job ends, the generated draft is shown. **Your project does not change until you click _Apply this draft to the project_.** If problems remain after the last round, the draft is shown with them and applying it keeps them: nothing is fixed silently.
 
+**Your conversations.** Every Generate is a turn of a conversation, kept for you and this project only. The card lists your conversations (title, requests, date, *working* while one runs) — the same ones the editor's **AI** window shows. Open one to read each request and what the AI answered, with its status (*passes the rules*, *problems left*, *no draft*, *failed*), **What it did** (every step) and **Show this result (and apply it)**; the button then reads **Continue**, and the AI starts from the project as saved plus that conversation. **New conversation** starts over.
+
+**View or app?** SATOM's data — FortiGate rules, FortiWeb objects, every dataset — is read by **views and widgets**. An **app** (a form and a diagram) has no step that reads a dataset, so a request such as "look an IP up in the FortiGate rules" is a view with an input parameter (the IP): create a view project for it. Asked in an app, the AI says so instead of building something else.
+
 Generation needs the target's rules pack: if it is missing or was made for another SATOM version, generation is blocked and the message says why. Provider errors (a wrong key, rate limiting, a refusal) are shown with the provider's message and the key removed. With an Anthropic profile on Anthropic's own API, a request the model declines is retried automatically on Anthropic's recommended fallback model, if the profile allows it.
 
 ### 5.1 The Assistant (conversations)

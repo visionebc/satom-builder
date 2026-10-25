@@ -232,6 +232,24 @@
     view.appendChild(el('a', {'class': 'btn btn-sm btn-outline-secondary mt-1', href: '/projects/' + pid + '/edit#ai=' + t.thread},
                              [el('i', {'class': 'bi bi-box-arrow-up-right me-1'}), 'Open this conversation in the editor']));
   }
+  function loadHistory(select) {
+    var sel = $('sb-thread');
+    if (!sel) { return Promise.resolve([]); }
+    return SB.api('GET', base + '/ai-history').then(function (r) {
+      if (!r.ok) { return []; }
+      threads = r.data.threads || [];
+      var keep = select || sel.value;
+      clear(sel);
+      sel.appendChild(el('option', {value: '', text: 'New conversation'}));
+      threads.forEach(function (t) {
+        sel.appendChild(el('option', {value: t.thread, text: (t.running ? '\u23f3 ' : '') + (t.title || '(no text)') +
+          ' \u2014 ' + t.turns.length + ' request(s), ' + when(t.updated_at)}));
+      });
+      sel.value = threads.some(function (t) { return t.thread === keep; }) ? keep : '';
+      renderThreadView();
+      return threads;
+    });
+  }
   if ($('sb-thread-new')) {
     $('sb-thread-new').addEventListener('click', function () { $('sb-thread').value = ''; renderThreadView(); $('sb-prompt').focus(); });
   }
