@@ -76,12 +76,7 @@
     if (["steps", "sdk", "guide"].includes(S.section)) { renderGuide(body); return; }
     if (!lib) { body.appendChild(empty("No library loaded.")); return; }
     if (S.section === "datasets") {
-      body.appendChild(card("Datasets a view reads", [
-        h("p", { class: "sb-help", text: "A view declares the datasets it reads; each arrives as {columns, rows}, cut to the viewer's ADOMs. In the body: {% for r in fleet_appliances.rows %}{{ r.name }}{% endfor %}." }),
-        table(["Key", "Label", "Columns", "Description"], (lib.datasets || []).map((d) => h("tr", null,
-          h("td", null, h("code", { text: d.key })), h("td", { text: d.label }),
-          h("td", null, (d.columns || []).map((c) => [h("code", { class: "sb-chip", text: c }), " "])),
-          h("td", { class: "sb-help", text: d.description }))), "lib-datasets")], "lib-sec-datasets"));
+      renderDatasets(body, lib);
     } else if (S.section === "stores") {
       const stores = lib.stores || {};
       const keys = Object.keys(stores);
@@ -108,6 +103,63 @@
     } else if (S.section === "fortinet") {
       renderFortinet(body);
     }
+  }
+
+  const SOURCE = { builtin: ["built-in", "secondary"], admin: ["administrator", "info"], objects: ["device objects", "secondary"] };
+
+  /* Hundreds of datasets (built-in, administrator, one per cached device-object
+   * type): searchable, grouped, one open at a time with its columns, its
+   * relations and how SATOM builds it. */
+  function renderDatasets(body, lib) {
+    const all = lib.datasets || [];
+    const f = (S.dsFilter || "").toLowerCase();
+    const hit = (d) => !f || (d.key + " " + (d.label || "") + " " + (d.columns || []).join(" ")).toLowerCase().includes(f);
+    const groups = {};
+    all.forEach((d) => { const g = d.group || "Datasets"; (groups[g] = groups[g] || []).push(d); });
+    const counts = {};
+    all.forEach((d) => { counts[d.source || "builtin"] = (counts[d.source || "builtin"] || 0) + 1; });
+    const filt = h("input", { type: "search", class: "form-control form-control-sm", id: "lib-ds-filter", placeholder: "Search: key, name or column", value: S.dsFilter || "", "aria-label": "Search datasets" });
+    const list = h("div", { id: "lib-datasets" });
+    const draw = () => {
+      clear(list);
+      const ff = (S.dsFilter || "").toLowerCase();
+      let shown = 0;
+      Object.keys(groups).forEach((g) => {
+        const items = groups[g].filter((d) => !ff || (d.key + " " + (d.label || "") + " " + (d.columns || []).join(" ")).toLowerCase().includes(ff));
+        if (!items.length) return;
+        shown += items.length;
+        const det = h("details", { class: "sb-lib-ver", open: g === "Built-in" || g === "Administrator datasets" || (ff && items.length <= 30) || null },
+          h("summary", null, h("strong", { text: g }), h("span", { class: "sb-help", text: ` · ${items.length}` })));
+        items.forEach((d) => {
+          const src = SOURCE[d.source] || [d.source || "", "secondary"];
+          const item = h("details", { class: "sb-lib-item", id: "lib-ds-" + d.key },
+            h("summary", null, h("code", { text: d.key }), " ", d.label || "", " ", src[0] ? badge(src[0], src[1]) : null,
+              h("span", { class: "sb-help", text: ` · ${(d.columns || []).length} columns` })));
+          item.addEventListener("toggle", () => {
+            if (!item.open || item.dataset.filled) return;
+            item.dataset.filled = "1";
+            item.appendChild(h("div", { class: "sb-lib-ds" },
+              d.description ? h("p", { class: "sb-help", text: d.description }) : null,
+              h("p", { class: "sb-help" }, "In a view: ", h("code", { text: `{% for r in ${d.key}.rows %}…{% endfor %}` })),
+              h("div", null, (d.columns || []).map((c) => [h("code", { class: "sb-chip" + ((d.masked || []).includes(c) ? " sb-chip-masked" : ""), text: c, title: (d.masked || []).includes(c) ? "masked: reads ********" : null }), " "])),
+              (d.relations || []).length ? h("ul", { class: "sb-help mb-1" }, d.relations.map((r) => h("li", null, h("code", { text: r.column }), " → ", h("code", { text: `${r.to}.${r.to_column}` }), r.inferred ? " (inferred from the name)" : ""))) : null,
+              d.sql ? h("pre", { class: "sb-lib-sql", text: d.sql }) : null,
+              d.spec ? h("pre", { class: "sb-lib-sql", text: "Report Builder query (built by an administrator):\n" + JSON.stringify(d.spec, null, 1) }) : null,
+              d.object ? h("p", { class: "sb-help", text: `The cached ${d.object.product} objects of type ${d.object.logical_name} (${d.object.layer} layer).` }) : null));
+          });
+          det.appendChild(item);
+        });
+        list.appendChild(det);
+      });
+      if (!shown) list.appendChild(empty("No dataset matches."));
+      $("lib-ds-count").textContent = `${all.length} datasets: ${counts.builtin || 0} built-in, ${counts.admin || 0} from administrators, ${counts.objects || 0} device-object types` + (ff ? ` · ${shown} match` : "");
+    };
+    filt.addEventListener("input", () => { S.dsFilter = filt.value; draw(); });
+    body.appendChild(card("Datasets a view reads", [
+      h("p", { class: "sb-help", text: "A view declares the datasets it reads; each arrives as {columns, rows}, cut to the viewer's ADOM and devices. Three sources: SATOM's built-in queries, the ones an administrator published in Administrator › Database › Plugin datasets (admin_<name>), and one per object type the device cache holds (<product>_<type>). Open one for its columns (masked ones read ********), its relations and how SATOM builds it." }),
+      h("div", { class: "d-flex gap-2 align-items-center flex-wrap mb-2" }, filt, h("span", { class: "sb-help", id: "lib-ds-count", "aria-live": "polite" })),
+      list], "lib-sec-datasets"));
+    draw();
   }
 
   function renderFortinet(body) {

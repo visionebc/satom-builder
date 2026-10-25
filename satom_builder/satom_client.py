@@ -302,7 +302,7 @@ class SatomClient:
             # (4.2.0 answers {"error": "Not found"} for an unknown route).
             if exc.status == 404:
                 raise SatomError(f"{self.host} runs a SATOM that does not send its data to "
-                                 "the Builder yet: it needs SATOM 4.2.1 or later. Generate "
+                                 "the Builder yet: it needs SATOM 4.3.0 or later. Generate "
                                  "test data instead.", "no_data_api", 409) from None
             raise
         if not isinstance(j, dict) or j.get("format") != "satom.builder-data/1":

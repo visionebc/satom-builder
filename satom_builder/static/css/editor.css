@@ -294,3 +294,13 @@ body.ed-checks-open .ed-checks { display: block; }
 @media (max-width: 640px) {
   .db-grid { grid-template-columns: 1fr; gap: 14px; }
 }
+
+/* Datasets tab: hundreds of datasets, grouped and searchable */
+.ed-ds-picked { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.ed-ds-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ed-border); border-radius: var(--ed-radius); padding: 2px 4px 2px 8px; background: var(--ed-surface-alt); font-size: 12.5px; }
+.ed-ds-chip.ed-ds-missing { border-color: var(--ed-warn); }
+.ed-ds-group { border: 1px solid var(--ed-border-light); border-radius: var(--ed-radius); padding: 4px 10px; margin-bottom: 6px; background: var(--ed-surface); }
+.ed-ds-group > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 4px 0; }
+.ed-ds-group .ed-ds { padding: 3px 0 5px; border-top: 1px solid var(--ed-border-light); }
+.db-add-list { list-style: none; margin: 6px 0; padding: 0; max-height: 360px; overflow: auto; }
+.db-add-list li { padding: 3px 0; border-top: 1px solid var(--ed-border-light); font-size: 12.5px; overflow-wrap: anywhere; }

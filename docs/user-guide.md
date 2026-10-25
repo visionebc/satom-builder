@@ -82,11 +82,21 @@ The last check (local or on SATOM) is remembered and shown on the overview and i
 
 A connection with a non-empty `password`, `secret`, `token`, `api_key` or `client_secret` cannot be saved: SATOM asks for secrets when the package is imported.
 
+### 4.0 Datasets: what a view reads
+
+The **Datasets** tab lists every dataset the target SATOM offers (SATOM 4.3.0 and later), grouped and searchable; tick the ones the view reads and read them in the body as `{{ <key>.rows }}`. Three kinds:
+
+- **Built-in** (`fleet_appliances`, `server_policies`, `server_policies_full`, `server_pools`, `web_protection_profiles`, `certificates`, `audit_recent`, `fleet_counts`, `scheduled_actions`): SATOM's curated queries.
+- **Device objects** (`<product>_<object type>`, e.g. `fortiweb_vip`, `fortiweb_server_policy`, `fortigate_firewall_policy`, `fortiadc_load_balance_pool__pool_member`; deep layer `fortiweb_deep_<type>`): one per object type the target's device cache holds, hundreds of them. Columns `id`, `appliance_id`, `device`, `mkey` (the object's name on the device), `parent_id`, then the object's own fields (`deployment-mode` reads `deployment_mode`); secret-looking fields read `********`.
+- **Administrator** (`admin_<name>`): a query an administrator of the target built and published in SATOM (Administrator › Database › Plugin datasets). When a plugin needs something no dataset gives, ask them for one: it appears here at the next **Refresh from SATOM**. Your package carries its definition, so a SATOM that does not have it yet creates it pending its administrator's approval.
+
+Your token decides what you see: its ADOM's datasets and, in test data, its ADOM's devices. The **Library** page lists the same catalogue with each dataset's columns, relations and how SATOM builds it.
+
 ### 4.1 Test data
 
-The **Test data** tab holds what a test run reads instead of SATOM's database, for this project only. A project with no test data yet **starts from the data of its SATOM target** the first time you open the tab (or Database, or Test run): the tab says so. When the target cannot send it (a SATOM older than 4.2.1, no token, unreachable), the project starts from generated rows instead, and the tab says why.
+The **Test data** tab holds what a test run reads instead of SATOM's database, for this project only. A project with no test data yet **starts from the data of its SATOM target** the first time you open the tab (or Database, or Test run): the tab says so. When the target cannot send it (a SATOM older than 4.3.0, no token, unreachable), the project starts from generated rows instead, and the tab says why.
 
-- **Datasets**: views and widgets get every SATOM dataset, the ones the view reads first (*Datasets this view reads*), the rest under *Other SATOM datasets* so you can look at them before picking them in the Datasets tab. An app gets the fleet only (it answers *Load an appliance* and the lists of SATOM objects). The columns are exactly those SATOM gives a view, from SATOM's own dataset queries, through the target's rules pack.
+- **Datasets**: a view or widget gets the datasets it reads (*Datasets this view reads*), SATOM's nine built-in ones and any you added in the Database tab (*Other datasets*). An app gets the fleet only (it answers *Load an appliance* and the lists of SATOM objects). The columns are exactly those SATOM gives a view.
 - **Data stores**: the stores this project uses; from the target's rows, or from the package's seed rows for a store that exists only in the package.
 - **Connections**: what each connection answers. HTTP: a list of responses, each with a method (`*` = any), a path (`*` = one path segment, `**` = anything), a status and a JSON body; the first match answers, otherwise the default. PostgreSQL: rows per text found in the SQL.
 - **SATOM and device steps**: what a check, a DDI, certificate or FortiWeb step answers in a test run (ok, yes, no or error, a value, a detail). A test run never reaches a device or SATOM's fleet.
@@ -99,7 +109,8 @@ The **Test data** tab holds what a test run reads instead of SATOM's database, f
 
 The **Database** tab shows the saved test data as a database:
 
-- **Diagram**: one box per table, with its columns and their types. A dataset is a table named by its key (`fleet_appliances`), a data store a table `store_<slug>`. Lines join a column to the table it refers to (`appliance_id` and `device` to `fleet_appliances`, `server_pool` to `server_pools`, `wpp` to `web_protection_profiles`); the relations are also listed as text. Click a table to highlight its lines and see its columns, where its rows came from and, for a dataset, **the query SATOM fills it with** (PostgreSQL, run on SATOM).
+- **Diagram**: one box per table, with its columns and their types. A dataset is a table named by its key (`fleet_appliances`, `fortiweb_vip`), a data store a table `store_<slug>`. Lines join a column to the table it refers to, as SATOM describes it: `appliance_id` to `fleet_appliances`, a sub-object's `parent_id` to its parent, a field named like another object type (a policy's `vserver`) to that type's `mkey` (inferred from the name), and among the built-in datasets `device`, `server_pool` and `wpp`; the relations are also listed as text.
+- **More of SATOM's data**: search the target's datasets and **Add** one to the test data (SATOM's rows for you, like Load from SATOM) to look at it, join it and query it; **Remove** takes it out again. The datasets the view reads and the built-in ones are always there. Click a table to highlight its lines and see its columns, where its rows came from and, for a dataset, **the query SATOM fills it with** (PostgreSQL, run on SATOM).
 - **SQL**: one read-only SQLite `SELECT` (or `WITH`) over the saved test data, at most 500 rows back, stopped after 3 seconds. **Example queries** offers one per table, a join per relation and devices per kind. Ctrl+Enter runs the query. A write, `ATTACH`, `PRAGMA` or a file function is refused: change data in the Test data tab.
 - The **Assistant** knows these tables (names, types, row counts, relations; never a row) and answers questions about the data with a query you can run here.
 
@@ -142,7 +153,7 @@ The editor's **Assistant** tab keeps conversations with an AI profile about the 
 
 ## 6. Library
 
-**Library** (in the sidebar) shows, for a target you have a token for, what a plugin builds on: the **datasets** a view reads and their columns, the **data stores** and their columns, the **API Catalog** with every version's endpoints, the **Fortinet API library** (pick a build to list its endpoints, open one for its fields), the **step kinds** of a diagram, the **script SDK** and the **author guide**. It is read with your token and shows structure only: no row of the target's data and no secret. **Refresh from SATOM** reads it again. It needs SATOM 4.2.0 or later on the target.
+**Library** (in the sidebar) shows, for a target you have a token for, what a plugin builds on: the **datasets** a view reads (built-in, administrator and one per device-object type: search them, open one for its columns, masked ones marked, its relations and its SQL or query), the **data stores** and their columns, the **API Catalog** with every version's endpoints, the **Fortinet API library** (pick a build to list its endpoints, open one for its fields), the **step kinds** of a diagram, the **script SDK** and the **author guide**. It is read with your token and shows structure only: no row of the target's data and no secret. **Refresh from SATOM** reads it again. It needs SATOM 4.2.0 or later on the target.
 
 ## 7. My tokens
 

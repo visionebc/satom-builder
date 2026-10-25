@@ -5,16 +5,17 @@
  * one read-only SQLite SELECT over the SAVED test data
  * (POST .../testdata/sql). Rows never go to the AI: the Assistant tab gets
  * this schema (names and counts) and answers with queries to run here. */
-import { h, clear, field, textarea, select, button, badge, card, empty, say } from "../ui.js";
+import { h, clear, field, input, textarea, select, button, badge, card, empty, say } from "../ui.js";
 import * as D from "../dbmodel.js";
 import { ensureInfo, originBadge, S as TD } from "./testdata.js";
 
-const S = { pid: null, schema: null, version: -1, selected: null, sql: "", result: null, error: "", observer: null };
+const S = { pid: null, schema: null, version: -1, selected: null, sql: "", result: null, error: "", observer: null,
+  lib: null, libTid: null, libError: "", find: "", busy: "" };
 const SVG = "http://www.w3.org/2000/svg";
 
 async function load(ctx, force) {
   await ensureInfo(ctx);
-  if (S.pid !== ctx.project.id) { S.pid = ctx.project.id; S.schema = null; S.selected = null; S.sql = ""; S.result = null; S.error = ""; }
+  if (S.pid !== ctx.project.id) { S.pid = ctx.project.id; S.schema = null; S.selected = null; S.sql = ""; S.result = null; S.error = ""; S.lib = null; S.libTid = null; S.find = ""; }
   if (!S.schema || force || S.version !== TD.version) {
     S.schema = await ctx.api.testdataSchema(ctx.project.id);
     S.version = TD.version;
@@ -26,7 +27,7 @@ async function load(ctx, force) {
  * over the grid from the boxes' positions (redrawn when the layout moves). */
 function drawLines(wrap) {
   const svg = wrap.querySelector("svg.db-lines");
-  if (!svg) return;
+  if (!svg || !S.schema || !wrap.isConnected) return;   // the schema is reloading, or the panel moved on
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const box = wrap.getBoundingClientRect();
   svg.setAttribute("width", String(wrap.scrollWidth));
@@ -97,6 +98,66 @@ function details(ctx, t, rerender) {
     q], { icon: t.kind === "store" ? "bi-database" : "bi-table", id: "db-details" });
 }
 
+/* More of SATOM's data: any dataset of the target (built-in, administrator,
+ * device objects) added to the test data to explore it here; a view's own
+ * datasets and the built-in ones are always there. */
+async function loadLib(ctx) {
+  const tid = ctx.project.target_id || (ctx.target && ctx.target.id);
+  if (!tid || S.libTid === tid) return;
+  S.libTid = tid;
+  try { S.lib = await ctx.api.library(tid); S.libError = ""; } catch (e) { S.lib = null; S.libError = e.message; }
+}
+
+function addCard(ctx, rerender) {
+  if (ctx.kind === "app") return null;
+  const info = TD.info || {};
+  const have = new Set(((S.schema && S.schema.tables) || []).filter((t) => t.kind === "dataset").map((t) => t.key));
+  const fixed = new Set((info.datasets || []).filter((d) => d.used || d.builtin).map((d) => d.key));
+  const kids = [h("p", { class: "ed-help", text: "Add any dataset of the target to the test data (its rows come from SATOM, as it shows them to you) to look at it, join it and query it here. The datasets the view reads and SATOM's built-in ones are always in the test data." })];
+  if (!S.lib) {
+    const b = button("Show the target's datasets", { id: "db-lib-load" }, "bi-collection");
+    b.addEventListener("click", async () => { S.libTid = null; await loadLib(ctx); rerender(); });
+    kids.push(S.libError ? h("div", { class: "fw-alert fw-alert-info", role: "note", text: "The target's library could not be read: " + S.libError }) : null, b);
+  } else {
+    const q = input(S.find, { id: "db-find", type: "search", placeholder: "Search: key, name or column (e.g. vip, firewall_policy)", "aria-label": "Search the target's datasets" });
+    const t = S.find.trim().toLowerCase();
+    const all = (S.lib.datasets || []).filter((d) => !have.has(d.key));
+    const hits = all.filter((d) => !t || (d.key + " " + (d.label || "") + " " + (d.columns || []).join(" ")).toLowerCase().includes(t)).slice(0, 40);
+    const list = h("ul", { class: "db-add-list", id: "db-add-list" }, hits.map((d) => {
+      const add = button("Add", { class: "btn btn-sm btn-fw-outline", "aria-label": `Add ${d.key} to the test data`, disabled: !!S.busy }, "bi-plus-lg");
+      add.addEventListener("click", async () => {
+        S.busy = d.key; rerender();
+        try {
+          const j = await ctx.api.importTestdata(ctx.project.id, { add: [d.key], limit: TD.limit || 200 });
+          TD.info = j; TD.data = j.data; TD.dirty = false; TD.version += 1;
+          S.schema = null; S.selected = d.key; ctx.say(`${d.key} added to the test data.`, "ok");
+        } catch (e) { ctx.say(e.message, "bad"); }
+        S.busy = ""; rerender();
+      });
+      return h("li", null, add, " ", h("code", { text: d.key }), " ", d.label || "", h("small", { class: "text-muted", text: ` · ${(d.columns || []).length} columns · ${d.group || ""}` }));
+    }));
+    q.addEventListener("input", () => { S.find = q.value; const pos = q.selectionStart; rerender(); const n = document.getElementById("db-find"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } });
+    kids.push(field("Find a dataset", q), S.busy ? h("div", { class: "ed-status", role: "status", text: `Reading ${S.busy} from SATOM…` }) : null,
+      hits.length ? list : empty(t ? "No dataset matches." : "Every dataset of the target is already here."),
+      all.length > hits.length ? h("p", { class: "ed-help", text: `${all.length - hits.length} more: narrow the search.` }) : null);
+  }
+  const extra = ((S.schema && S.schema.tables) || []).filter((tb) => tb.kind === "dataset" && !fixed.has(tb.key));
+  if (extra.length) {
+    kids.push(h("h4", { class: "ed-sub", text: "Added to explore" }), h("ul", { class: "db-add-list", id: "db-extra-list" }, extra.map((tb) => {
+      const rm = button("Remove", { class: "btn btn-sm btn-fw-outline", "aria-label": `Remove ${tb.key} from the test data` }, "bi-x-lg");
+      rm.addEventListener("click", async () => {
+        const data = TD.data || {};
+        delete (data.datasets || {})[tb.key];
+        delete (data.origin || {})["datasets:" + tb.key];
+        try { const j = await ctx.api.saveTestdata(ctx.project.id, data); TD.data = j.data; TD.info = null; TD.version += 1; S.schema = null; if (S.selected === tb.key) S.selected = null; } catch (e) { ctx.say(e.message, "bad"); }
+        rerender();
+      });
+      return h("li", null, rm, " ", h("code", { text: tb.key }), h("small", { class: "text-muted", text: ` · ${tb.rows} rows` }));
+    })));
+  }
+  return card("More of SATOM's data", kids, { icon: "bi-cloud-plus", id: "db-card-add" });
+}
+
 async function run(ctx, rerender) {
   const st = document.getElementById("db-status");
   say(st, "Running…", "busy");
@@ -124,6 +185,7 @@ export default {
   render(ctx, panel) {
     const rerender = () => this.render(ctx, panel);
     if (!S.schema || S.pid !== ctx.project.id || S.version !== TD.version) {
+      if (S.observer) { S.observer.disconnect(); S.observer = null; }
       clear(panel).appendChild(empty("Loading the test database…"));
       load(ctx).then(() => rerender()).catch((e) => { clear(panel).appendChild(h("div", { class: "fw-alert fw-alert-warning", id: "db-unavailable", text: "The test database could not be read: " + e.message })); });
       return;
@@ -160,6 +222,9 @@ export default {
       const det = details(ctx, tables.find((t) => t.name === S.selected), rerender);
       if (det) panel.appendChild(det);
     }
+    if (ctx.kind !== "app" && S.libTid === null) loadLib(ctx).then(rerender);
+    const more = addCard(ctx, rerender);
+    if (more) panel.appendChild(more);
     const ex = D.examples(sch);
     const exSel = select(ex.map((e, i) => ({ value: String(i), label: e.label })), "", { id: "db-examples", "aria-label": "Example queries" }, "Example queries…");
     exSel.addEventListener("change", () => { const e = ex[Number(exSel.value)]; if (e) { S.sql = e.sql; rerender(); } });

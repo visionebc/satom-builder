@@ -125,6 +125,7 @@ def validate_manifest(m) -> dict:
             raise PackageError(f"'{k}' must be a list.")
     if kind == "app" and (m.get("datasets") or m.get("params")):
         raise PackageError("An app plugin carries no datasets or params.")
+    _check_dataset_defs(m, kind)
     if m.get("min_satom") and not VERSION_RE.match(str(m["min_satom"])):
         raise PackageError("min_satom must be X.Y.Z.")
     files = m.get("files")
@@ -142,6 +143,52 @@ def validate_manifest(m) -> dict:
     if kind == "app" and APP_FILE not in files:
         raise PackageError("An app plugin carries app.json.")
     return m
+
+
+#: An administrator dataset a view brings with it (contract section 16; the
+#: same rules as SATOM's plugin_package): the destination creates it pending.
+DATASET_DEF_KEY_RE = re.compile(r"^admin_[a-z][a-z0-9_]{1,59}$")
+MAX_DATASET_DEFS = 20
+
+
+def _check_dataset_defs(m: dict, kind: str) -> None:
+    defs = m.get("dataset_defs", [])
+    if not isinstance(defs, list):
+        raise PackageError("'dataset_defs' must be a list.")
+    if defs and kind not in ("view", "widget"):
+        raise PackageError(f"A {kind} plugin carries no dataset definitions.")
+    if len(defs) > MAX_DATASET_DEFS:
+        raise PackageError(f"At most {MAX_DATASET_DEFS} dataset definitions.")
+    wanted = {str(k) for k in m.get("datasets") or []}
+    seen = set()
+    for i, d in enumerate(defs):
+        if not isinstance(d, dict):
+            raise PackageError(f"dataset_defs[{i}] must be an object.")
+        key = str(d.get("key") or "")
+        if not DATASET_DEF_KEY_RE.match(key):
+            raise PackageError(f"dataset_defs[{i}].key must be admin_<name>.")
+        if key not in wanted or key in seen:
+            raise PackageError(f"dataset_defs[{i}]: {key} is not one of the plugin's datasets "
+                               "(or is defined twice).")
+        seen.add(key)
+        if not isinstance(d.get("spec"), dict) or not isinstance(d["spec"].get("base"), str):
+            raise PackageError(f"dataset_defs[{i}].spec must be a query (an object with base).")
+        for f, n in (("label", 120), ("description", 2000), ("product", 32)):
+            if not isinstance(d.get(f, ""), str) or len(d.get(f, "")) > n:
+                raise PackageError(f"dataset_defs[{i}].{f} must be text of at most {n} characters.")
+
+
+def dataset_defs_from(datasets, defs: dict) -> list[dict]:
+    """The definitions a package carries for the administrator datasets among
+    *datasets*, from the target's library entries (*defs*: key -> entry)."""
+    out = []
+    for k in datasets or []:
+        d = defs.get(k) or {}
+        if DATASET_DEF_KEY_RE.match(str(k)) and isinstance(d.get("spec"), dict):
+            out.append({"key": str(k), "label": str(d.get("label") or k)[:120],
+                        "description": str(d.get("description") or "")[:2000],
+                        "product": str(d.get("product") or "")[:32], "spec": d["spec"]})
+    return out[:MAX_DATASET_DEFS]
 
 
 # --------------------------------------------------------------------------
@@ -261,7 +308,8 @@ def app_body_bytes(body: dict) -> bytes:
 
 
 def build_from_project(project: dict, assets: list[dict], *, private_key=None,
-                       built_at: str | None = None, min_satom: str = "") -> tuple[str, bytes]:
+                       built_at: str | None = None, min_satom: str = "",
+                       dataset_defs: list | None = None) -> tuple[str, bytes]:
     """``project`` is the section-11 shape; ``assets`` = [{"sha256","mime","data"}].
     -> (file name, package bytes)."""
     kind = project.get("kind")
@@ -278,6 +326,8 @@ def build_from_project(project: dict, assets: list[dict], *, private_key=None,
     }
     if VERSION_RE.match(min_satom or ""):
         manifest["min_satom"] = min_satom
+    if dataset_defs and kind in ("view", "widget"):
+        manifest["dataset_defs"] = list(dataset_defs)
     files: dict[str, bytes] = {}
     if kind in ("view", "widget"):
         src = project.get("files") or {}

@@ -325,7 +325,7 @@ export default {
     (info.datasets || []).forEach((d) => { dsCols[d.key] = d; });
     const keys = (info.datasets || []).map((d) => d.key);
     const groups = ctx.kind === "app" ? [["Datasets", keys]]
-      : [["Datasets this view reads", keys.filter((k) => dsCols[k].used)], ["Other SATOM datasets (pick them in the Datasets tab)", keys.filter((k) => !dsCols[k].used)]];
+      : [["Datasets this view reads", keys.filter((k) => dsCols[k].used)], ["Other datasets: SATOM's built-in ones and the ones you added in the Database tab", keys.filter((k) => !dsCols[k].used)]];
     groups.forEach(([title, list]) => {
       if (!list.length) return;
       panel.appendChild(h("h3", { class: "ed-sub", text: title }));

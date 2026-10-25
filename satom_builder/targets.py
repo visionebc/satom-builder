@@ -107,6 +107,40 @@ def rules_pack(conn, target_row, user_id: int, snap: dict) -> rules.RulesPack:
     return rules.load(data_dir, sha, version, timeout)
 
 
+def cached_library(conn, target_row, user_id: int, key: str, fetch, refresh: bool = False) -> dict:
+    """A library answer (contract section 14), cached per (target, author,
+    key) for ``SATOM_BUILDER_SNAPSHOT_TTL`` seconds like the snapshot."""
+    ttl = float(current_app.config["SATOM_BUILDER_SNAPSHOT_TTL"])
+    if not refresh:
+        row = conn.execute("SELECT fetched_at, data FROM library_cache WHERE target_id = ? AND "
+                           "user_id = ? AND key = ?", (target_row["id"], user_id, key)).fetchone()
+        if row and db.now() - row["fetched_at"] < ttl:
+            data = db.loads(row["data"])
+            if isinstance(data, dict):
+                data["cached_at"] = row["fetched_at"]
+                return data
+    with client(conn, target_row, user_id) as c:
+        data = fetch(c)
+    conn.execute("INSERT INTO library_cache (target_id, user_id, key, fetched_at, data) "
+                 "VALUES (?,?,?,?,?) ON CONFLICT(target_id, user_id, key) DO UPDATE SET "
+                 "fetched_at = excluded.fetched_at, data = excluded.data",
+                 (target_row["id"], user_id, key, db.now(), db.dumps(data)))
+    data["cached_at"] = db.now()
+    return data
+
+
+def dataset_defs(conn, target_row, user_id: int) -> dict:
+    """``{key: dataset}`` of the target's library (every source: built-in,
+    administrator, device objects, contract sections 14 and 16); ``{}`` when
+    the target's SATOM has no library or cannot be reached."""
+    try:
+        lib = cached_library(conn, target_row, user_id, "library", lambda c: c.library())
+    except SatomError:
+        return {}
+    return {str(d.get("key")): d for d in lib.get("datasets") or []
+            if isinstance(d, dict) and d.get("key")}
+
+
 class NotReady(Exception):
     """A precondition for talking to SATOM is missing (target, token...)."""
 

@@ -84,6 +84,29 @@ class ParseError(ValueError):
 VIEW_SCHEMA_KEYS = ("datasets", "param_types", "patterns", "limits")
 
 
+_OBJECT_PRODUCTS = ("fortiweb", "fortigate", "fortiadc", "fortianalyzer", "fortiauthenticator")
+
+
+def dataset_summary(keys) -> dict:
+    """The target's dataset keys for a prompt: the built-in and administrator
+    ones by name, the device-object ones (about 600) counted per product with
+    a few examples. A view reads a key as ``{{ <key>.rows }}``."""
+    named, objects = [], {}
+    for k in keys or []:
+        k = str(k)
+        prod = k.split("_", 1)[0]
+        if prod in _OBJECT_PRODUCTS:
+            objects.setdefault(prod, []).append(k)
+        else:
+            named.append(k)
+    return {"named": named,
+            "device_objects": {p: {"count": len(v), "examples": v[:8]}
+                               for p, v in sorted(objects.items())},
+            "device_object_keys": "<product>_<object type> (deep layer <product>_deep_<type>, "
+                                  "sub-object <type>__<sub>); columns id, appliance_id, device, "
+                                  "mkey, parent_id and the object's fields with - read as _"}
+
+
 def target_summary(snapshot: dict, kind: str = "app") -> dict:
     """Names and shapes only, from an allow-list of snapshot keys. A view or a
     widget gets only what a view can use."""
@@ -91,8 +114,9 @@ def target_summary(snapshot: dict, kind: str = "app") -> dict:
         schema = snapshot.get("schema") or {}
         choices = snapshot.get("choices") or {}
         return {"satom_version": str(snapshot.get("satom_version", "")),
-                "datasets": [str(d) for d in (choices.get("datasets") or [])],
-                "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS if k in schema}}
+                "datasets": dataset_summary(choices.get("datasets")),
+                "schema": {k: schema[k] for k in VIEW_SCHEMA_KEYS
+                           if k in schema and k != "datasets"}}
     ex = snapshot.get("existing") or {}
     stores = {}
     for slug, s in (ex.get("stores") or {}).items():
@@ -114,10 +138,11 @@ def target_summary(snapshot: dict, kind: str = "app") -> dict:
     choices = snapshot.get("choices") or {}
     return {
         "satom_version": str(snapshot.get("satom_version", "")),
-        "datasets": [str(d) for d in (choices.get("datasets") or [])],
+        "datasets": dataset_summary(choices.get("datasets")),
         "existing": {"apps": apps, "stores": stores, "connections": conns,
                      "api_versions": apis, "scripts": scripts},
-        "schema": snapshot.get("schema") or {},
+        # an app reads no dataset: the ~600 keys stay out of its prompt
+        "schema": {k: v for k, v in (snapshot.get("schema") or {}).items() if k != "datasets"},
     }
 
 

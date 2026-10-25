@@ -54,21 +54,46 @@ def _graph_steps(project: dict) -> list[dict]:
             if isinstance(n, dict) and n.get("kind") not in plain]
 
 
+_DEF_KEYS = ("key", "label", "description", "columns", "sql", "source", "group", "product",
+             "relations", "masked", "spec", "object")
+
+
+def _defs(conn, row, pack) -> tuple[dict, list[str]]:
+    """``({key: dataset}, built-in keys)``: SATOM's built-in datasets from the
+    rules pack's runtime (with their SQL), every other one (administrator,
+    device objects) from the target's library (contract section 16). Without
+    a library (SATOM older than 4.3.0) only the built-in ones."""
+    out, builtin = {}, []
+    for d in runtime.info(pack).get("datasets") or []:
+        out[d["key"]] = dict(d, source="builtin", group="Built-in")
+        builtin.append(d["key"])
+    t = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
+    if t is not None:
+        for k, d in targets.dataset_defs(conn, t, g.user.id).items():
+            merged = dict(out.get(k) or {})
+            merged.update({f: d[f] for f in _DEF_KEYS if f in d})
+            out[k] = merged
+    return out, builtin
+
+
+def _keys(proj, defs, builtin, data, add=None) -> list[str]:
+    return testdata.dataset_keys(proj, list(defs), data, builtin=builtin, add=add)
+
+
 def _describe(conn, row, data, updated_at) -> dict:
     proj = projects.to_api(conn, row)
     snap, pack, why = _pack_for(conn, row)
-    datasets, sources = [], []
+    defs, builtin, sources = {}, [], []
     if pack is not None:
         try:
-            inf = runtime.info(pack)
-            datasets, sources = inf.get("datasets") or [], inf.get("sources") or []
+            defs, builtin = _defs(conn, row, pack)
+            sources = runtime.info(pack).get("sources") or []
         except runtime.RuntimeUnavailable as exc:
             pack, why = None, exc.message
     reads = set(testdata.used_datasets(proj))
-    keep = testdata.dataset_keys(proj, [d["key"] for d in datasets])
-    by_key = {d["key"]: d for d in datasets}
-    datasets = [dict(by_key[k], used=k in reads or proj.get("kind") not in ("view", "widget"))
-                for k in keep]
+    datasets = [dict(defs[k], used=k in reads or proj.get("kind") not in ("view", "widget"),
+                     builtin=k in builtin)
+                for k in _keys(proj, defs, builtin, data)]
     stores = {s: {"columns": d["columns"], "from": d["from"]}
               for s, d in testdata.store_defs(proj, snap).items()}
     conns = {s: {"kind": d.get("kind") or "http", "from": d.get("from"),
@@ -77,6 +102,7 @@ def _describe(conn, row, data, updated_at) -> dict:
     scripts_need_jail = runtime.needs_jail("app", proj) or bool(
         ((proj.get("app") or {}).get("scripts") or []))
     return {"data": data, "updated_at": updated_at, "datasets": datasets, "stores": stores,
+            "catalog": len(defs),
             "connections": conns, "steps": _graph_steps(proj), "sources": sources,
             "runtime": {"ok": pack is not None, "message": why or "",
                         "satom_version": (snap or {}).get("satom_version") or "",
@@ -133,9 +159,12 @@ def testdata_generate(pid):
         return api_error("bad_request", "seed and rows are numbers.", 400)
     only = body.get("only") if isinstance(body.get("only"), list) else None
     current, _ = runtime.load_testdata(conn, pid)
+    proj = projects.to_api(conn, row)
     try:
-        data = testdata.generate(projects.to_api(conn, row), snap, runtime.dataset_columns(pack),
-                                 seed=seed, rows=n, current=current, only=only)
+        defs, builtin = _defs(conn, row, pack)
+        data = testdata.generate(proj, snap, {k: d.get("columns") or [] for k, d in defs.items()},
+                                 seed=seed, rows=n, current=current, only=only,
+                                 keys=_keys(proj, defs, builtin, current))
         clean = runtime.save_testdata(conn, pid, data)
     except (testdata.TestDataError, runtime.RuntimeUnavailable) as exc:
         return api_error("bad_testdata", getattr(exc, "message", None) or str(exc), 400)
@@ -165,20 +194,32 @@ def testdata_import(pid):
     if pack is None:
         return api_error("no_runtime", why or "No test runtime for this project's target.", 409)
     proj = projects.to_api(conn, row)
+    add = body.get("add") if isinstance(body.get("add"), list) else None
     try:
         t = targets.get_target(conn, row["target_id"])
-        keys = testdata.dataset_keys(proj, list(runtime.dataset_columns(pack)))
-        stores = list(testdata.store_defs(proj, snap))
+        defs, builtin = _defs(conn, row, pack)
+        current, _ = runtime.load_testdata(conn, pid)
+        if add is not None:
+            unknown = [str(k) for k in add if str(k) not in defs]
+            if unknown or proj.get("kind") not in ("view", "widget"):
+                return api_error("bad_request", "Only a view or a widget adds datasets, and only "
+                                 "the target's: " + ", ".join(unknown[:5]), 400)
+            keys = [str(k) for k in add]
+            stores = []
+        else:
+            keys = _keys(proj, defs, builtin, current)
+            stores = list(testdata.store_defs(proj, snap))
         with targets.client(conn, t, g.user.id) as c:
             answer = c.data(datasets=keys, stores=stores, limit=limit)
-        current, _ = runtime.load_testdata(conn, pid)
+        if add is not None:
+            answer = dict(answer, sources={})          # adding a table keeps the lists
         clean = runtime.save_testdata(conn, pid, testdata.from_satom(current, answer, proj, snap,
-                                                                     t["name"]))
+                                                                     t["name"], keys=keys))
     except SatomError as exc:
         return api_error(exc.code, exc.message, exc.status)
     except (testdata.TestDataError, runtime.RuntimeUnavailable) as exc:
         return api_error("bad_testdata", getattr(exc, "message", None) or str(exc), 400)
-    audit("testdata.import", row["slug"], target=t["name"], limit=limit,
+    audit("testdata.import", row["slug"], target=t["name"], limit=limit, added=add or [],
           datasets={k: len(v["rows"]) for k, v in clean["datasets"].items()},
           stores={k: len(v["rows"]) for k, v in clean["stores"].items()})
     return _describe(conn, row, clean, db.now())
@@ -191,12 +232,12 @@ def _tables(conn, row, pid):
         return None, None, api_error("no_runtime", why or "No test runtime for this "
                                      "project's target.", 409)
     try:
-        info = runtime.info(pack).get("datasets") or []
+        defs, _builtin = _defs(conn, row, pack)
     except runtime.RuntimeUnavailable as exc:
         return None, None, api_error(exc.code, exc.message, exc.status)
     data, _ = runtime.load_testdata(conn, pid)
     stores = testdata.store_defs(projects.to_api(conn, row), snap)
-    return testdata.sql_tables(data, info, stores), data, None
+    return testdata.sql_tables(data, list(defs.values()), stores), data, None
 
 
 @bp.get("/projects/<int:pid>/testdata/schema")
@@ -261,7 +302,14 @@ def test_run_start(pid):
     if pack is None:
         return api_error("no_runtime", why or "No test runtime for this project's target.", 409)
     test, _ = runtime.load_testdata(conn, pid)
-    request = runtime.build_request(kind, proj, snap, test, body)
+    cols = {}
+    if kind == "view":
+        try:
+            defs, _builtin = _defs(conn, row, pack)
+            cols = {k: d.get("columns") or [] for k, d in defs.items()}
+        except runtime.RuntimeUnavailable:
+            cols = {}
+    request = runtime.build_request(kind, proj, snap, test, body, dataset_columns=cols)
     rid = runtime.start(current_app._get_current_object(), pack, project_id=pid,
                         user_id=g.user.id, kind=kind, subject=str(body.get("script") or ""),
                         request=request, inputs_shown=runtime.masked_inputs(kind, proj, body))

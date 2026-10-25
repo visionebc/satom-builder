@@ -58,6 +58,7 @@ export class Api {
     return this.req("POST", `/api/projects/${id}/assets`, fd);
   }
   schema(targetId) { return this.req("GET", `/api/targets/${targetId}/schema`); }
+  library(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/library${refresh ? "?refresh=1" : ""}`); }
   snapshot(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/snapshot${refresh ? "?refresh=1" : ""}`); }
   aiProfiles() { return this.req("GET", "/api/ai/profiles"); }
   generatePreview(id, profileId, prompt) { return this.req("POST", `/api/projects/${id}/generate/preview`, { profile_id: profileId, prompt }); }

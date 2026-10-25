@@ -134,12 +134,19 @@ def _catalog(project: dict, conn: dict):
             "status": "published", "operations": ops}
 
 
-def build_request(kind: str, project: dict, snapshot: dict | None, test: dict, body: dict) -> dict:
+def build_request(kind: str, project: dict, snapshot: dict | None, test: dict, body: dict,
+                  dataset_columns: dict | None = None) -> dict:
+    """*dataset_columns* gives the columns of the datasets that are not SATOM's
+    built-in ones (administrator, device objects: contract section 16), which
+    the runtime's own ``plugin_sandbox.DATASETS`` does not know."""
     if kind == "view":
         files = project.get("files") or {}
+        used = testdata.used_datasets(project)
         return {"op": "render", "body": files.get("body.jinja") or "",
                 "css": files.get("style.css") or "", "js": files.get("script.js") or "",
-                "datasets": testdata.used_datasets(project), "params": project.get("params") or [],
+                "datasets": used, "params": project.get("params") or [],
+                "dataset_columns": {k: list((dataset_columns or {}).get(k) or []) for k in used
+                                    if (dataset_columns or {}).get(k)},
                 "inputs": body.get("inputs") or {}, "test": test}
     stores = {s: {"columns": d["columns"]} for s, d in testdata.store_defs(project, snapshot).items()}
     conns = {}

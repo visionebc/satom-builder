@@ -400,7 +400,7 @@ The rules pack also carries the code the Builder TESTS a package with, on its ow
 
 The AI answer of a conversation may carry `"message"` (a note to the author) and may be `{"message": ...}` alone (no change).
 
-## 15. Test data from the target's SATOM, and the test database (2026-10-25, SATOM 4.2.1, Builder 0.2.1)
+## 15. Test data from the target's SATOM, and the test database (2026-10-25, SATOM 4.3.0, Builder 0.3.0)
 
 Requested: "add the data we have in SATOM to the Builder so something already exists, with the database diagram and SQL so it can be queried".
 
@@ -416,9 +416,9 @@ Requested: "add the data we have in SATOM to the Builder so something already ex
 
 - **Dataset rows** are what a view rendered on that SATOM shows the token's owner: `plugin_sandbox.load_datasets` (the fixed query through `dbintrospect.run_query`: read-only, sensitive columns masked, values as text), cut to the owner's visible appliances and ADOM, `audit_recent` only with `audit.view`.
 - **Store rows** carry the declared columns plus `_id`; never `_by`, `_created_at`, `_updated_at`.
-- **sources** are `studio_satom.source_options` for every source the server can build. Since 4.2.1 the device lists (`appliances`, `fortiweb`) follow the viewer's ADOM and maintenance permission in a request (before, a form listed the whole fleet in every ADOM).
+- **sources** are `studio_satom.source_options` for every source the server can build. Since 4.3.0 the device lists (`appliances`, `fortiweb`) follow the viewer's ADOM and maintenance permission in a request (before, a form listed the whole fleet in every ADOM).
 - The answer stays under 3 MB: a table that does not fit is cut and marked `truncated`. One audit line `builder.data` with the row counts per table.
-- A SATOM without the route answers 404 (`{"error": "Not found"}` on 4.2.0); the Builder reports "needs SATOM 4.2.1" (`409 no_data_api`) and generates test data instead.
+- A SATOM without the route answers 404 (`{"error": "Not found"}` on 4.2.0); the Builder reports "needs SATOM 4.3.0" (`409 no_data_api`) and generates test data instead.
 
 **Builder side.** The rows are the test data of ONE project on the Builder that asked: never written to a package, a repository or a prompt. `testdata.from_satom` replaces the datasets the project's test data holds (a view: every dataset, the declared ones first; an app: `fleet_appliances` only), the stores the project uses that exist on the target (a package-only store keeps its seed rows) and the `sources`; connections and step answers stay. The test data document gains `origin`: `{"datasets:<k>" | "stores:<slug>" | "sources": {"source": "satom"|"generated"|"package", "at", "target", "total", "truncated", "edited"}}`. A document over 4 MB loses rows from its largest table first, marked `truncated`. A project with no test data yet is filled by the editor the first time it opens Test data, Database or Test run (from SATOM, else generated).
 
@@ -426,11 +426,39 @@ Requested: "add the data we have in SATOM to the Builder so something already ex
 
 The assistant's prompt gains "The project's test database": `testdata.schema_text`, i.e. table names, kinds, column names and types, row counts, origins and relations; never a row.
 
-**§11 Internal API, additions (Builder 0.2.1)**
+**§11 Internal API, additions (Builder 0.3.0)**
 
 | Route | Body → Answer |
 |---|---|
 | `GET /api/projects/<id>/testdata` | as in 0.2.0; `datasets[]` gains `sql` and `used` (the view reads it; always true for an app) |
-| `POST /api/projects/<id>/testdata/import` | `{"limit"}` → the GET shape, saved, with the target SATOM's rows; `409 no_data_api` (SATOM older than 4.2.1), `403 satom_forbidden` (owner not a Plugin Studio author) |
+| `POST /api/projects/<id>/testdata/import` | `{"limit"}` → the GET shape, saved, with the target SATOM's rows; `409 no_data_api` (SATOM older than 4.3.0), `403 satom_forbidden` (owner not a Plugin Studio author) |
 | `GET /api/projects/<id>/testdata/schema` | → `{"tables": [{name, kind, key, label, sql, columns: [{name, type}], rows: <count>, origin}], "relations": [{from, column, to, to_column}]}`; no row |
 | `POST /api/projects/<id>/testdata/sql` | `{"sql"}` → `{"columns", "rows": [[...]], "truncated", "ms"}`; `400 bad_sql` with SQLite's message |
+
+## 16. Every dataset of the target (2026-10-25, SATOM 4.3.0, Builder 0.3.0)
+
+Requested: "create the ~600 [device-object datasets] plus what the administrator creates; the Builder must receive the datasets created in SATOM, so both are in line".
+
+**SATOM side.** `services.plugin_datasets` is the one catalogue of what a plugin can read, from three sources:
+
+| Source | Key | Built from |
+|---|---|---|
+| `builtin` | the nine keys of `plugin_sandbox.DATASETS` | their fixed SQL |
+| `objects` | `<product>_<logical>` (config layer), `<product>_deep_<logical>` (deep layer); `/` in a logical name → `__`; a key over 100 characters is cut and suffixed with 8 hex of its sha256 | one per (product, layer, logical name) the device cache (`device_objects`) holds; columns `id`, `appliance_id`, `device`, `mkey`, `parent_id` + the object's own scalar fields (`-` → `_`, at most 80, most common first, a field named like a fixed column gets `f_`); fields whose name says secret are `********` |
+| `admin` | `admin_<slug>` | a `PluginDataset` row (Administrator › Database › Plugin datasets): a Report Builder spec run through `db_lookup` (read-only console role, the ADOM scope added by the server); offered only when `published` |
+
+Every key is a Jinja identifier: a view reads `{{ <key>.rows }}`. Rows are cut to the viewer (visible appliances, ADOM). A concrete ADOM lists only its product's object datasets and the admin datasets of that ADOM or of every ADOM. The catalogue of object types is cached in-process for 300 s.
+
+- `GET /builder/library` → `datasets[]` is that catalogue: `{key, label, description, columns, source, group, product, relations: [{column, to, to_column, inferred}], masked}`, plus `sql` (built-in), `spec` (admin) or `object: {product, layer, logical_name}` (objects). Relations: `appliance_id` → `fleet_appliances.id`; a sub-object's `parent_id` → its parent type's `id`; a field named like another object type of the same product and layer → that type's `mkey` (`inferred: true`); an admin column `appliance_id`/`*_appliance_id` → the fleet (inferred).
+- `GET /builder/target` → `choices.datasets` lists every key. The author guide (`package_check.author_guide`) names the built-in and admin ones and counts the object ones per product.
+- `GET /builder/data` → any key; `datasets` absent = the built-in and admin ones (an object dataset only when named).
+- **Packages** (`satom.plugin/1`, same format string): a view or widget manifest may carry `dataset_defs` (at most 20): `[{key: admin_<slug> (one of its datasets), label, description, product, spec: {base, ...}}]`. SATOM's export writes them; an import into a server without that dataset creates it `pending` (`source` = "<slug> <version>"), keeps the key in the plugin and adds a to-do; the view reads no rows from it until an administrator publishes it. A definition the destination refuses (its query does not compile there) is dropped with a warning. `package_check` warns "comes with the package: it lands pending" (`view.datasets`, `summary.pending_datasets`).
+
+**Builder side.**
+- `targets.dataset_defs()` reads the library (cached per author like the snapshot) → `{key: entry}`; the built-in entries are merged with the rules pack runtime's `info` (their `sql`). A target without the library (SATOM < 4.3.0) offers the built-in datasets only.
+- **Test data** of a view or widget holds the datasets it reads, then the nine built-in ones, then any the author added: `POST /api/projects/<id>/testdata/import` `{"add": [keys], "limit"}` reads only those keys from SATOM and keeps everything else (`400` for an unknown key or for an app). Removing an added one is a `PUT` of the test data without it. An app's test data keeps only `fleet_appliances`.
+- **Test runs**: the view render request carries `dataset_columns` `{key: [columns]}` for the datasets the rules pack's `plugin_sandbox.DATASETS` does not know.
+- **Database**: `schema.relations` = the relations SATOM gave (first) plus the built-in references, each `{from, column, to, to_column, inferred}`; tables carry `source`, `spec`, `masked`.
+- **Packages**: `package.build_from_project(..., dataset_defs=)` writes the definitions of the admin datasets a view reads, from the library (`package.dataset_defs_from`); `validate_manifest` applies SATOM's rules to `dataset_defs`.
+- **Prompts**: `ai_loop.dataset_summary` — named keys (built-in, admin) in full, object keys counted per product with 8 examples; the `datasets` key list leaves the prompt's schema.
+- **Editor**: the Datasets tab and the Library page list every dataset grouped and searchable; the Database tab adds any dataset of the target to the test data and removes it.

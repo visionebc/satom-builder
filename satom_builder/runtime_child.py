@@ -94,10 +94,14 @@ def op_render(pack: str, req: dict) -> dict:
     kit = PF.kit_css_from(open(os.path.join(pack, rt["kit_css"]), encoding="utf-8").read())
     test = req.get("test") or {}
     data = {}
+    extra = req.get("dataset_columns") or {}
     for key in req.get("datasets") or []:
-        if key not in PS.DATASETS:
+        if key in PS.DATASETS:
+            cols = PS.dataset_columns(key)
+        elif isinstance(extra.get(key), list):
+            cols = [str(c) for c in extra[key]]       # administrator / device-object dataset
+        else:
             continue
-        cols = PS.dataset_columns(key)
         rows = ((test.get("datasets") or {}).get(key) or {}).get("rows") or []
         data[key] = {"columns": cols, "rows": [{c: r.get(c) for c in cols} for r in rows]}
     pdefs = PS.clean_param_defs(req.get("params") or [])

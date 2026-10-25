@@ -81,8 +81,16 @@ def _private_key():
 def _build(conn, row, snap: dict | None = None) -> tuple[str, bytes]:
     proj = projects.to_api(conn, row)
     min_satom = str((snap or {}).get("satom_version") or "")
+    defs = []
+    if proj.get("kind") in ("view", "widget") and row["target_id"] is not None and any(
+            str(k).startswith("admin_") for k in proj.get("datasets") or []):
+        t = targets.get_target(conn, row["target_id"])
+        if t is not None and targets.has_token(conn, g.user.id, t["id"]):
+            defs = package.dataset_defs_from(proj.get("datasets"),
+                                             targets.dataset_defs(conn, t, g.user.id))
     return package.build_from_project(proj, projects.asset_blobs(conn, row["id"]),
-                                      private_key=_private_key(), min_satom=min_satom)
+                                      private_key=_private_key(), min_satom=min_satom,
+                                      dataset_defs=defs)
 
 
 def _local_check(conn, row) -> tuple[dict | None, str]:

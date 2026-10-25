@@ -5,15 +5,48 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
-Test data starts from the target SATOM's own data, and the test data is a
-database with a diagram and SQL. Requested: "add the data we have in SATOM to
-the Builder so something already exists, and there must also be the
-database diagram and SQL so it can be queried and it is easier". **Load from
-SATOM needs SATOM 4.2.1 or later** on the target (`GET /api/v1/builder/data`,
-contract section 15); with an older SATOM the Builder generates test data as
-before and says why.
+**Every dataset of the target, kept in line with SATOM (SATOM 4.3.0).**
+Requested: "create the ~600 plus what the administrator creates, so there are
+examples and if something is missing an administrator can create it; the
+Builder must receive these datasets created in SATOM so both are in line".
 
 ### Added
+
+- **Hundreds of datasets, read from the target.** The Builder reads the
+  target's whole catalogue from its library: SATOM's nine built-in datasets,
+  one per object type its device cache holds (`fortiweb_vip`,
+  `fortigate_firewall_policy`, `fortiadc_load_balance_pool__pool_member`…,
+  603 on the lab fleet) and the ones its administrators publish
+  (`admin_<name>`). Each with its columns, its relations and how SATOM builds
+  it. A dataset published in SATOM appears in the Builder at the next library
+  refresh (or **Refresh from SATOM**).
+- **Datasets tab**: grouped (built-in, administrator, one group per product
+  and object family) and searchable; what the plugin reads is listed first.
+- **Library page**: the same catalogue, searchable; open a dataset for its
+  columns (masked ones marked), its relations and its SQL or query.
+- **Database tab › More of SATOM's data**: find any dataset of the target and
+  add it to the test data, with SATOM's rows, to explore, join and query it;
+  remove it again. The relations SATOM gives (to the fleet, to a parent
+  object, to the type a field is named after) are drawn in the diagram.
+- **Test runs render device-object and administrator datasets** with their
+  columns from SATOM.
+- **A package carries the definition of the administrator datasets** its
+  view reads; the destination SATOM creates them pending an administrator's
+  approval instead of dropping them.
+
+### Changed
+
+- A view's test data holds the datasets it reads, SATOM's built-in ones and
+  the ones the author added (no longer every dataset: there are hundreds).
+- The AI's request names the built-in and administrator datasets and counts
+  the device-object ones per product, instead of listing ~600 keys.
+
+**Test data from SATOM, and the test data as a database.** Requested: "add
+the data we have in SATOM to the Builder so something already exists, and
+there must also be the database diagram and SQL so it can be queried and it
+is easier". **Load from SATOM needs SATOM 4.3.0 or later** on the target (`GET
+/api/v1/builder/data`, contract section 15); with an older SATOM the Builder
+generates test data as before and says why.
 
 - **Load from SATOM** (Test data tab): the rows the target SATOM shows you,
   read with your token: its datasets, the data stores the project uses and
@@ -28,9 +61,9 @@ before and says why.
   cannot send them), and the tab says which.
 - **Where every table came from**: *from SATOM* (target, time, *first rows
   of N* when cut), *generated (seed N)*, *package seed rows*, *edited*.
-- **Views see every dataset** in their test data, the ones they read first,
-  the rest under *Other SATOM datasets*, so an author can look before
-  picking.
+- **Views see SATOM's built-in datasets** in their test data next to the ones
+  they read, so an author can look before picking (any other dataset is added
+  in the Database tab).
 - **Database tab**: the test data as tables (a dataset by its key, a data
   store as `store_<slug>`) in a diagram with their columns, types and the
   relations between them (`appliance_id`, `device`, `server_pool`, `wpp`);

@@ -289,7 +289,7 @@ def used_datasets(project: dict) -> list[str]:
 
 def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
              *, seed: int = 1, rows: int = DEFAULT_ROWS, current: dict | None = None,
-             only: list | None = None) -> dict:
+             only: list | None = None, keys: list | None = None) -> dict:
     """Fresh test data for a project. *only* (``["datasets:x", "stores:y", ...]``)
     regenerates those tables and keeps the rest of *current*."""
     rows = max(1, min(int(rows or DEFAULT_ROWS), 200))
@@ -300,7 +300,7 @@ def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
     def pick(kind, key):
         return not want or f"{kind}:{key}" in want
 
-    for key in dataset_keys(project, dataset_columns):
+    for key in (keys if keys is not None else dataset_keys(project, dataset_columns, current)):
         cols = dataset_columns.get(key)
         if cols and pick("datasets", key):
             out["datasets"][key] = {"rows": dataset_rows(key, cols, gen, rows)}
@@ -326,22 +326,33 @@ def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
     return out
 
 
-def dataset_keys(project: dict, known) -> list[str]:
-    """The datasets a project's test data holds. A view or a widget: every
-    dataset (the ones it reads first), so its author can look at all of them
-    before picking. An app reads none: only the fleet, which answers "Load an
+
+
+def dataset_keys(project: dict, known, current: dict | None = None,
+                 builtin=None, add=None) -> list[str]:
+    """The datasets a project's test data holds. A view or a widget: the ones
+    it reads first, then SATOM's built-in ones, then the ones the author added
+    to explore (already in *current* or in *add*) -- all of them known to the
+    target. An app reads none: only the fleet, which answers "Load an
     appliance" and the satom_select sources."""
     if project.get("kind") not in ("view", "widget"):
         return ["fleet_appliances"]
-    used = [k for k in used_datasets(project) if k in known]
-    return used + [k for k in known if k not in used]
+    known = list(known)
+    have = set(known)
+    out = [k for k in used_datasets(project) if k in have]
+    builtin = list(builtin) if builtin is not None else known
+    extra = list(((current or {}).get("datasets") or {}).keys()) + list(add or [])
+    for k in builtin + extra:
+        if k in have and k not in out:
+            out.append(k)
+    return out
 
 
 # --------------------------------------------------------------------------
 # from the target's SATOM (contract section 15)
 # --------------------------------------------------------------------------
 def from_satom(current: dict | None, answer: dict, project: dict, snapshot: dict | None,
-               target: str) -> dict:
+               target: str, keys: list | None = None) -> dict:
     """*current* with the tables SATOM sent replaced by SATOM's rows.
 
     Datasets as :func:`dataset_keys` picks them; the data stores the project
@@ -353,7 +364,7 @@ def from_satom(current: dict | None, answer: dict, project: dict, snapshot: dict
     at = str(answer.get("taken_at") or "")[:40]
     target = str(target or "")[:120]
     sent = answer.get("datasets") or {}
-    for key in dataset_keys(project, list(sent)):
+    for key in (keys if keys is not None else dataset_keys(project, list(sent))):
         d = sent.get(key)
         if not isinstance(d, dict):
             continue
@@ -579,9 +590,12 @@ def sql_tables(data: dict, datasets: list[dict], stores: dict) -> list[dict]:
         rows = d.get("rows") or []
         known = list((info.get(key) or {}).get("columns") or [])
         names = known + [c for c in dict.fromkeys(k for r in rows for k in r) if c not in known]
+        d = info.get(key) or {}
         out.append({"name": key, "kind": "dataset", "key": key,
-                    "label": (info.get(key) or {}).get("label") or key,
-                    "sql": (info.get(key) or {}).get("sql") or "",
+                    "label": d.get("label") or key, "sql": d.get("sql") or "",
+                    "source": d.get("source") or "", "spec": d.get("spec"),
+                    "relations": [r for r in d.get("relations") or [] if isinstance(r, dict)],
+                    "masked": list(d.get("masked") or []),
                     "columns": [{"name": c, "type": _infer(rows, c)} for c in names],
                     "rows": rows})
     used = {t["name"] for t in out}
@@ -599,6 +613,7 @@ def sql_tables(data: dict, datasets: list[dict], stores: dict) -> list[dict]:
             name += "_"
         used.add(name)
         out.append({"name": name, "kind": "store", "key": slug, "label": slug, "sql": "",
+                    "source": "store", "spec": None, "relations": [], "masked": [],
                     "columns": [{"name": "_id", "type": "number"}]
                     + [{"name": c, "type": types.get(c) or _infer(rows, c)} for c in names[1:] + extra],
                     "rows": rows})
@@ -608,16 +623,31 @@ def sql_tables(data: dict, datasets: list[dict], stores: dict) -> list[dict]:
 def schema(tables: list[dict], origin: dict | None = None) -> dict:
     """What the database diagram draws: tables (no rows) and relations."""
     by_name = {t["name"]: t for t in tables}
-    rels = []
+    by_key = {t["key"]: t for t in tables if t["kind"] == "dataset"}
+    rels, seen = [], set()
+
+    def add(frm, col, to, to_col, inferred):
+        tgt = by_key.get(to) or by_name.get(to)
+        if tgt is None or tgt["name"] == frm["name"] or (frm["name"], col) in seen:
+            return
+        if col not in {c["name"] for c in frm["columns"]} or \
+                to_col not in {c["name"] for c in tgt["columns"]}:
+            return
+        seen.add((frm["name"], col))
+        rels.append({"from": frm["name"], "column": col, "to": tgt["name"], "to_column": to_col,
+                     "inferred": bool(inferred)})
     for t in tables:
-        cols = {c["name"] for c in t["columns"]}
+        # what SATOM says first (contract section 16), then the known built-in references
+        for r in t.get("relations") or []:
+            add(t, str(r.get("column") or ""), str(r.get("to") or ""),
+                str(r.get("to_column") or ""), r.get("inferred"))
         for col, ref, key in REFS:
-            if col in cols and ref in by_name and ref != t["name"] and \
-                    key in {c["name"] for c in by_name[ref]["columns"]}:
-                rels.append({"from": t["name"], "column": col, "to": ref, "to_column": key})
+            add(t, col, ref, key, False)
     origin = origin or {}
     return {"tables": [{"name": t["name"], "kind": t["kind"], "key": t["key"], "label": t["label"],
-                        "sql": t["sql"], "columns": t["columns"], "rows": len(t["rows"]),
+                        "sql": t["sql"], "source": t.get("source") or "", "spec": t.get("spec"),
+                        "masked": t.get("masked") or [],
+                        "columns": t["columns"], "rows": len(t["rows"]),
                         "origin": origin.get(("datasets:" if t["kind"] == "dataset" else "stores:")
                                              + t["key"]) or {}}
                        for t in tables],
