@@ -159,7 +159,7 @@ def conversation_text(history: list, new_text: str, text_files: list) -> str:
 # --------------------------------------------------------------------------
 def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, adapter,
                 pack, snap: dict, project: dict, assets: list, max_rounds: int,
-                profile_label: str, test_schema: str = "") -> dict:
+                profile_label: str, test_schema: str = "", render_check=None) -> dict:
     """Store the author's message and a running reply, then write the reply
     in a thread. -> {"user": id, "reply": id}."""
     with db.session(app.config["DB_PATH"]) as conn:
@@ -201,7 +201,8 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
                 res = ai_loop.run(adapter, pack, snap, project, author_text, assets,
                                   max_rounds=max_rounds, on_round=on_round,
                                   min_satom=str(snap.get("satom_version") or ""), chat=True,
-                                  images=images or None, progress=pg)
+                                  images=images or None, progress=pg,
+                                  render_check=render_check)
                 draft = res.get("project")
                 note = res.get("message") or ""
                 if not note:

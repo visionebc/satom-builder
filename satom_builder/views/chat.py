@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 from flask import Blueprint, current_app, g, make_response, request
 
-from .. import ai_loop, chat, db, projects, runtime, targets, testdata
+from .. import render_check, ai_loop, chat, db, projects, runtime, targets, testdata
 from ..profiles import adapter_for
 from ..profiles import get as get_profile
 from ..security import api_error, audit, login_required
@@ -252,7 +252,10 @@ def chat_send(cid):
                                assets=projects.asset_blobs(conn, row["id"]),
                                max_rounds=max_rounds,
                                profile_label=f"{prof['name']} ({prof['model']})",
-                               test_schema=_test_schema(conn, row, pack, snap))
+                               test_schema=_test_schema(conn, row, pack, snap),
+                               render_check=render_check.make(
+                                   pack, snap, targets.dataset_defs(conn, t, g.user.id))
+                               if row["kind"] in ("view", "widget") else None)
     audit("chat.message", row["slug"], chat=cid, profile=prof["name"], files=len(ids))
     return ids_msg, 202
 

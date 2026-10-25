@@ -492,10 +492,14 @@ def generate(pid):
     assets = projects.asset_blobs(conn, pid)
     min_satom = str(snap.get("satom_version") or "")
 
+    from .. import render_check
+    rcheck = render_check.make(pack, snap, targets.dataset_defs(conn, t, g.user.id)) \
+        if proj.get("kind") in ("view", "widget") else None
+
     def work(job_id, jconn, update, progress):
         return ai_loop.run(adapter, pack, snap, proj, author_text, assets,
                            max_rounds=max_rounds, on_round=update, min_satom=min_satom,
-                           progress=progress, request=prompt)
+                           progress=progress, request=prompt, render_check=rcheck)
 
     job_id = ai_loop.start_job(current_app._get_current_object(), project_id=pid,
                                user_id=g.user.id, work=work,

@@ -328,7 +328,7 @@ def problems_text(result: dict) -> str:
 def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: list,
         max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "",
         chat: bool = False, images: list | None = None, progress=None,
-        request: str = "") -> dict:
+        request: str = "", render_check=None) -> dict:
     """-> {"ok", "rounds": [...], "project": candidate, "check": last result,
     "message": the model's note}. Raises AIError (provider) and RulesError
     (pack). The model may answer with a message alone: nothing is checked and
@@ -410,6 +410,19 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
         except package.PackageError as exc:
             last = {"ok": False, "problems": [{"where": "package", "message": str(exc)}],
                     "warnings": []}
+        if last.get("ok") and render_check is not None:
+            # SATOM's rules parse a template, they do not run it: render it
+            # (render_check.py) before calling the draft done
+            if pg:
+                pg.step("Rendering the view with test data (SATOM's own runtime)")
+            try:
+                rprobs, rnote = render_check(candidate)
+            except Exception as exc:  # noqa: BLE001 -- a render check never sinks the job
+                rprobs, rnote = [], "not rendered: " + str(exc)[:200]
+            if rprobs:
+                last = dict(last, ok=False, problems=list(last.get("problems") or []) + rprobs)
+            elif pg and rnote:
+                pg.step("Render: " + rnote, "ok" if rnote.startswith("rendered") else "warn")
         rec = {"n": n, "ok": bool(last.get("ok")), "at": db.now(),
                "problems": last.get("problems") or [],
                "warnings": last.get("warnings") or []}

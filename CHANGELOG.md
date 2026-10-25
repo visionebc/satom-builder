@@ -107,6 +107,18 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Fixed
 
+- **A view the AI drafts is rendered before it is called done.** In the lab,
+  asked for "the FortiGate rules that use an IP", the model wrote a view that
+  read `policy.srcaddr`: SATOM's rules passed it (they parse a template, they
+  do not run it) and the first real render failed, because a policy's
+  addresses are rows of `fortigate_firewall_policy__srcaddr` joined on
+  `parent_id`. Generate and the assistant now render a view or widget that
+  passes the rules with SATOM's own runtime (as a Test run) over generated
+  rows with exactly each dataset's columns, with no input and with sample
+  inputs; a failure is a problem of the round and goes back to the model with
+  the columns and relations of the datasets it reads and of their sub-object
+  datasets. A runtime that cannot run skips the render and says so.
+
 - **The project page now shows your AI conversations, as the editor does.**
   Reported: "the Builder has two chats, one on the project and one in the
   editor; the editor's has the history, the project's does not". Both read
