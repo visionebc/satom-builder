@@ -1,0 +1,429 @@
+"""Test data: what SATOM's runtime reads instead of a database when an author
+tests a project in the Builder.
+
+One JSON document per project (table ``test_data``)::
+
+    {"format": "satom-builder.testdata/1",
+     "datasets":    {"<dataset key>": {"rows": [{column: value}]}},
+     "stores":      {"<store slug>": {"rows": [{column: value}]}},
+     "connections": {"<slug>": {"responses": [{"method", "path", "status", "body"}],
+                                "default": {"status", "body"},
+                                "queries": [{"match", "rows"}]}},
+     "steps":       {"<step key>": {"outcome", "value", "detail"}},
+     "sources":     {"<satom_select source>": [{"value", "label"}]}}
+
+* **datasets** have SATOM's columns (``plugin_sandbox.dataset_columns`` from
+  the rules pack): a view tested here reads the same keys it reads there.
+* **stores** start from the package's seed rows, or generated rows shaped by
+  the store's columns, and are what a diagram's store steps read and write.
+* **connections** answer from canned responses: nothing leaves the Builder.
+  An HTTP response matches on method (``*`` = any) and path (``*`` = any
+  segment run, ``{x}`` = one segment); the first match wins, else
+  ``default``. A PostgreSQL query returns the rows of the first ``match``
+  substring found in its SQL.
+* **steps** decide what a step that would touch SATOM itself or a device
+  (checks, DDI, certificates, FortiWeb) answers in a test run.
+
+Generated values are synthetic and deterministic for a seed: names like
+``fwb-lab-01``, addresses in the documentation ranges (192.0.2.0/24,
+198.51.100.0/24, 203.0.113.0/24), ``example.com`` hosts. Never a value of a
+real installation: SATOM sends structure, not rows.
+"""
+from __future__ import annotations
+
+import json
+import random
+import re
+from datetime import datetime, timedelta, timezone
+
+FORMAT = "satom-builder.testdata/1"
+MAX_BYTES = 4 * 1024 * 1024
+MAX_ROWS = 2000
+MAX_RESPONSES = 200
+DEFAULT_ROWS = 8
+_KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
+
+KINDS = ("fortiweb", "fortigate", "fortiadc", "fortianalyzer", "fortiauthenticator")
+_PREFIX = {"fortiweb": "fwb", "fortigate": "fgt", "fortiadc": "adc",
+           "fortianalyzer": "faz", "fortiauthenticator": "fac"}
+_FIRMWARE = {"fortiweb": ("7.6.8", "8.0.6"), "fortigate": ("7.4.9", "8.0.1"),
+             "fortiadc": ("7.6.3", "8.0.3"), "fortianalyzer": ("7.6.4",),
+             "fortiauthenticator": ("6.6.6", "8.0.3")}
+_STATUS = ("enable", "enable", "enable", "disable")
+_WORDS = ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+          "india", "juliet", "kilo", "lima")
+
+
+class TestDataError(ValueError):
+    pass
+
+
+def empty() -> dict:
+    return {"format": FORMAT, "datasets": {}, "stores": {}, "connections": {},
+            "steps": {}, "sources": {}}
+
+
+# --------------------------------------------------------------------------
+# generation
+# --------------------------------------------------------------------------
+class _Gen:
+    """Deterministic synthetic values by column name (then by type)."""
+
+    def __init__(self, seed: int, n_devices: int):
+        self.r = random.Random(seed)
+        self.n = max(1, n_devices)
+        self.devices = []
+        for i in range(self.n):
+            kind = KINDS[0] if i < max(1, self.n - 2) else KINDS[(i % (len(KINDS) - 1)) + 1]
+            self.devices.append({
+                "id": i + 1, "name": f"{_PREFIX[kind]}-lab-{i + 1:02d}", "kind": kind,
+                "firmware": self.r.choice(_FIRMWARE[kind]), "host": f"192.0.2.{10 + i}",
+                "port": 443})
+        self.t0 = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
+
+    def device(self, i: int) -> dict:
+        return self.devices[i % self.n]
+
+    def ip(self, i: int) -> str:
+        return f"198.51.100.{(i * 7) % 250 + 2}"
+
+    def when(self, i: int, ahead: bool = False) -> str:
+        d = timedelta(days=self.r.randint(5, 400)) if ahead else -timedelta(hours=i * 3 + 1)
+        return (self.t0 + d).isoformat(timespec="seconds")
+
+    def word(self, i: int) -> str:
+        return _WORDS[i % len(_WORDS)]
+
+    def value(self, col: str, i: int, ctype: str = "", ctx: dict | None = None):
+        c = (col or "").lower()
+        dev = self.device((ctx or {}).get("dev", i))
+        if c == "id":
+            return i + 1
+        if c == "appliance_id":
+            return dev["id"]
+        if c in ("device", "appliance", "appliance_name"):
+            return dev["name"]
+        if c == "kind":
+            return dev["kind"] if (ctx or {}).get("table") == "fleet" else self.r.choice(
+                ("inline", "offline"))
+        if c in ("firmware", "version"):
+            return dev["firmware"]
+        if c in ("host", "hostname"):
+            return dev["host"] if (ctx or {}).get("table") == "fleet" else f"app{i + 1}.example.com"
+        if c == "port":
+            return dev["port"] if (ctx or {}).get("table") == "fleet" else self.r.choice((80, 443, 8443))
+        if c in ("ip", "address", "vip", "vserver", "ip_address", "src_ip", "dst_ip"):
+            return f"203.0.113.{(i * 5) % 250 + 2}" if c in ("vip", "vserver") else self.ip(i)
+        if c in ("policy", "name", "server_policy"):
+            stem = {"fleet": dev["name"]}.get((ctx or {}).get("table"))
+            return stem or f"{(ctx or {}).get('stem', 'policy')}-{self.word(i)}"
+        if c in ("server_pool", "pool"):
+            return f"pool-{self.word(i)}"
+        if c in ("wpp", "web_protection_profile", "signature_rule", "bot_policy"):
+            return {"wpp": "inline-standard", "web_protection_profile": "inline-standard",
+                    "signature_rule": "standard-signatures", "bot_policy": "bot-default"}[c]
+        if c in ("status", "state"):
+            return self.r.choice(_STATUS)
+        if c in ("traffic_log", "monitor_mode", "enabled", "https_service"):
+            if c == "enabled":
+                return self.r.choice((True, True, False))
+            if c == "https_service":
+                return "HTTPS"
+            return self.r.choice(("enable", "disable"))
+        if c == "deployment_mode":
+            return self.r.choice(("server-pool", "http-content-routing"))
+        if c in ("service",):
+            return "HTTP"
+        if c == "comment":
+            return f"App ID APP-{1000 + i} owner team-{self.word(i)}"
+        if c == "appid":
+            return f"APP-{1000 + i}"
+        if c in ("type",):
+            return self.r.choice(("reverse-proxy", "offline-protection"))
+        if c == "protocol":
+            return self.r.choice(("HTTP", "HTTPS"))
+        if c in ("common_name", "cn", "fqdn", "domain"):
+            return f"{self.word(i)}.example.com"
+        if c in ("not_after", "expires", "expiry", "valid_to", "next_run"):
+            return self.when(i, ahead=True)
+        if c in ("timestamp", "created_at", "updated_at", "at", "time", "date", "last_seen"):
+            return self.when(i)
+        if c in ("username", "user", "owner", "by"):
+            return f"user{i % 4 + 1}"
+        if c == "action":
+            return self.r.choice(("server_policy.update", "login", "backup.run", "plugin.import"))
+        if c == "target":
+            return dev["name"]
+        if c == "product":
+            return dev["kind"]
+        if c in ("action_key",):
+            return self.r.choice(("device_sync", "metrics_scrape", "backup_all"))
+        if c == "schedule_kind":
+            return self.r.choice(("interval", "daily", "cron"))
+        if c in ("devices",):
+            return self.n
+        if c in ("server_policies", "certificates", "count", "total"):
+            return self.r.randint(3, 60)
+        if c.endswith("_id"):
+            return self.r.randint(1, 20)
+        if c.startswith("is_") or c.startswith("has_"):
+            return self.r.choice((True, False))
+        t = (ctype or "").lower()
+        if t == "number":
+            return self.r.randint(1, 500)
+        if t == "boolean":
+            return self.r.choice((True, False))
+        if t == "date":
+            return self.when(i)[:10]
+        if t == "json":
+            return {"note": f"test {i + 1}"}
+        return f"{c or 'value'}-{i + 1}"
+
+
+def dataset_rows(key: str, columns: list[str], gen: _Gen, n: int) -> list[dict]:
+    if key == "fleet_appliances":
+        return [{c: gen.value(c, i, ctx={"table": "fleet", "dev": i}) for c in columns}
+                for i in range(gen.n)]
+    if key == "fleet_counts":
+        return [{c: gen.value(c, 0) for c in columns}]
+    stem = {"server_pools": "pool", "web_protection_profiles": "wpp",
+            "scheduled_actions": "job"}.get(key, "policy")
+    return [{c: gen.value(c, i, ctx={"stem": stem, "dev": i}) for c in columns}
+            for i in range(n)]
+
+
+def store_rows(columns: list[dict], gen: _Gen, n: int) -> list[dict]:
+    out = []
+    for i in range(n):
+        row = {}
+        for col in columns:
+            name = str(col.get("name") or "")
+            if not name or name.startswith("_"):
+                continue
+            row[name] = gen.value(name, i, str(col.get("type") or ""), {"stem": name})
+        out.append(row)
+    return out
+
+
+def _app_body(project: dict) -> dict:
+    a = project.get("app")
+    return a if isinstance(a, dict) else {}
+
+
+def store_defs(project: dict, snapshot: dict | None) -> dict:
+    """``{slug: {"columns": [...], "seed": [...], "from": "package"|"target"}}``:
+    the package's stores win over the target's existing ones."""
+    out = {}
+    existing = ((snapshot or {}).get("existing") or {}).get("stores") or {}
+    for slug, d in existing.items():
+        out[slug] = {"columns": list((d or {}).get("columns") or []), "seed": [], "from": "target"}
+    for s in _app_body(project).get("stores") or []:
+        if isinstance(s, dict) and s.get("slug"):
+            out[s["slug"]] = {"columns": list(s.get("columns") or []),
+                              "seed": list(s.get("rows") or []), "from": "package"}
+    return out
+
+
+def connection_defs(project: dict, snapshot: dict | None) -> dict:
+    out = {}
+    existing = ((snapshot or {}).get("existing") or {}).get("connections") or {}
+    for slug, d in existing.items():
+        out[slug] = dict(d or {}, slug=slug, **{"from": "target"})
+    for c in _app_body(project).get("connections") or []:
+        if isinstance(c, dict) and c.get("slug"):
+            out[c["slug"]] = dict(c, **{"from": "package"})
+    return out
+
+
+def _api_ops(project: dict, conn: dict) -> list[dict]:
+    """The operations of the API version a package connection is pinned to
+    (``api`` + ``api_version``), when the package defines that version."""
+    slug, ver = conn.get("api"), conn.get("api_version")
+    if not slug:
+        return []
+    for a in _app_body(project).get("apis") or []:
+        if isinstance(a, dict) and a.get("slug") == slug and (
+                not ver or str(a.get("version")) == str(ver)):
+            return [o for o in a.get("operations") or [] if isinstance(o, dict)]
+    return []
+
+
+def connection_template(project: dict, conn: dict) -> dict:
+    if conn.get("kind") == "postgres":
+        return {"queries": [{"match": "SELECT", "rows": [{"id": 1, "name": "row-1"}]}]}
+    responses = []
+    for op in _api_ops(project, conn):
+        path = re.sub(r"\{[^}/]+\}", "*", str(op.get("path") or "/"))
+        body = [{"id": 1, "name": "item-1"}] if op.get("method", "GET") == "GET" else {"ok": True}
+        responses.append({"method": str(op.get("method") or "GET").upper(), "path": path,
+                          "status": 200, "body": body})
+    if not responses:
+        responses = [{"method": "GET", "path": "*", "status": 200,
+                      "body": {"items": [{"id": 1, "name": "item-1"}]}},
+                     {"method": "*", "path": "*", "status": 200, "body": {"ok": True}}]
+    return {"responses": responses,
+            "default": {"status": 404, "body": {"error": "no test response for this request"}}}
+
+
+def used_datasets(project: dict) -> list[str]:
+    return [d for d in project.get("datasets") or [] if isinstance(d, str)]
+
+
+def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
+             *, seed: int = 1, rows: int = DEFAULT_ROWS, current: dict | None = None,
+             only: list | None = None) -> dict:
+    """Fresh test data for a project. *only* (``["datasets:x", "stores:y", ...]``)
+    regenerates those tables and keeps the rest of *current*."""
+    rows = max(1, min(int(rows or DEFAULT_ROWS), 200))
+    gen = _Gen(int(seed or 1), max(3, min(rows, 12)))
+    out = clean(current) if current else empty()
+    want = set(only or [])
+
+    def pick(kind, key):
+        return not want or f"{kind}:{key}" in want
+
+    keys = used_datasets(project) if project.get("kind") in ("view", "widget") else []
+    keys = keys or list(dataset_columns)          # an app: every dataset, for satom_select
+    for key in keys:
+        cols = dataset_columns.get(key)
+        if cols and pick("datasets", key):
+            out["datasets"][key] = {"rows": dataset_rows(key, cols, gen, rows)}
+    for slug, d in store_defs(project, snapshot).items():
+        if not pick("stores", slug):
+            continue
+        seed_rows = [r for r in d["seed"] if isinstance(r, dict)]
+        out["stores"][slug] = {"rows": seed_rows or store_rows(d["columns"], gen, rows)}
+    for slug, c in connection_defs(project, snapshot).items():
+        if pick("connections", slug) and (want or slug not in out["connections"]):
+            out["connections"][slug] = connection_template(project, c)
+    if pick("sources", "*") or not out["sources"]:
+        fleet = [gen.device(i) for i in range(gen.n)]
+        out["sources"] = {
+            "appliances": [{"value": str(d["id"]), "label": d["name"]} for d in fleet],
+            "fortiweb": [{"value": str(d["id"]), "label": d["name"]} for d in fleet
+                         if d["kind"] == "fortiweb"],
+        }
+    return out
+
+
+# --------------------------------------------------------------------------
+# validation
+# --------------------------------------------------------------------------
+def _rows(v, where: str) -> list:
+    if not isinstance(v, list):
+        raise TestDataError(f"{where}: rows must be a list.")
+    if len(v) > MAX_ROWS:
+        raise TestDataError(f"{where}: at most {MAX_ROWS} rows.")
+    for i, r in enumerate(v):
+        if not isinstance(r, dict):
+            raise TestDataError(f"{where}[{i}]: a row is an object of column: value.")
+    return v
+
+
+def clean(data) -> dict:
+    """The document, checked. Raises :class:`TestDataError` with the place."""
+    if data in (None, ""):
+        return empty()
+    if not isinstance(data, dict):
+        raise TestDataError("Test data must be a JSON object.")
+    raw = json.dumps(data, ensure_ascii=False)
+    if len(raw.encode("utf-8")) > MAX_BYTES:
+        raise TestDataError("Test data is larger than 4 MB.")
+    out = empty()
+    for part in ("datasets", "stores"):
+        sec = data.get(part, {})
+        if sec is None:
+            sec = {}
+        if not isinstance(sec, dict):
+            raise TestDataError(f"{part} must be an object.")
+        for k, v in sec.items():
+            if not _KEY_RE.match(str(k)):
+                raise TestDataError(f"{part}: {k!r} is not a valid name.")
+            rows = (v or {}).get("rows", []) if isinstance(v, dict) else v
+            out[part][k] = {"rows": _rows(rows, f"{part}.{k}.rows")}
+    sec = data.get("connections", {})
+    sec = {} if sec is None else sec
+    if not isinstance(sec, dict):
+        raise TestDataError("connections must be an object.")
+    for k, v in sec.items():
+        if not _KEY_RE.match(str(k)) or not isinstance(v, dict):
+            raise TestDataError(f"connections.{k} must be an object.")
+        resp = v.get("responses") or []
+        if not isinstance(resp, list) or len(resp) > MAX_RESPONSES:
+            raise TestDataError(f"connections.{k}.responses: a list of at most {MAX_RESPONSES}.")
+        clean_resp = []
+        for i, r in enumerate(resp):
+            if not isinstance(r, dict):
+                raise TestDataError(f"connections.{k}.responses[{i}] must be an object.")
+            try:
+                status = int(r.get("status", 200))
+            except (TypeError, ValueError):
+                raise TestDataError(f"connections.{k}.responses[{i}].status must be a number.")
+            if not 100 <= status <= 599:
+                raise TestDataError(f"connections.{k}.responses[{i}].status: 100 to 599.")
+            clean_resp.append({"method": str(r.get("method") or "*").upper()[:10],
+                               "path": str(r.get("path") or "*")[:500], "status": status,
+                               "body": r.get("body")})
+        d = v.get("default") if isinstance(v.get("default"), dict) else {}
+        queries = v.get("queries") or []
+        if not isinstance(queries, list):
+            raise TestDataError(f"connections.{k}.queries must be a list.")
+        out["connections"][k] = {
+            "responses": clean_resp,
+            "default": {"status": int(d.get("status", 404) or 404), "body": d.get("body")},
+            "queries": [{"match": str(q.get("match") or "")[:500],
+                         "rows": _rows(q.get("rows") or [], f"connections.{k}.queries[{i}].rows")}
+                        for i, q in enumerate(queries) if isinstance(q, dict)]}
+    sec = data.get("steps", {})
+    sec = {} if sec is None else sec
+    if not isinstance(sec, dict):
+        raise TestDataError("steps must be an object.")
+    for k, v in sec.items():
+        if not _KEY_RE.match(str(k)) or not isinstance(v, dict):
+            raise TestDataError(f"steps.{k} must be an object.")
+        oc = str(v.get("outcome") or "ok")
+        if oc not in ("ok", "yes", "no", "error"):
+            raise TestDataError(f"steps.{k}.outcome is ok, yes, no or error.")
+        out["steps"][k] = {"outcome": oc, "value": v.get("value"),
+                           "detail": str(v.get("detail") or "")[:500]}
+    sec = data.get("sources", {})
+    sec = {} if sec is None else sec
+    if not isinstance(sec, dict):
+        raise TestDataError("sources must be an object.")
+    for k, v in sec.items():
+        if not isinstance(v, list):
+            raise TestDataError(f"sources.{k} must be a list of {{value, label}}.")
+        out["sources"][str(k)[:60]] = [{"value": str(o.get("value", "")),
+                                        "label": str(o.get("label", o.get("value", "")))}
+                                       for o in v[:500] if isinstance(o, dict)]
+    return out
+
+
+def match_path(pattern: str, path: str) -> bool:
+    """``*`` alone = any path; ``*`` inside = one or more path characters
+    except ``/`` (a segment), ``**`` = anything."""
+    pattern = (pattern or "*").strip()
+    if pattern in ("*", "**"):
+        return True
+    p = (path or "/").split("?", 1)[0]
+    rx = re.escape(pattern).replace(r"\*\*", ".*").replace(r"\*", "[^/]+")
+    return re.fullmatch(rx, p) is not None or re.fullmatch(rx, p.rstrip("/")) is not None
+
+
+def http_answer(conn: dict, method: str, path: str) -> dict:
+    """The canned answer for one request: ``{"status", "body"}``."""
+    for r in (conn or {}).get("responses") or []:
+        if r.get("method") in ("*", (method or "GET").upper()) and match_path(r.get("path"), path):
+            return {"status": r.get("status", 200), "body": r.get("body")}
+    d = (conn or {}).get("default") or {}
+    return {"status": int(d.get("status", 404) or 404),
+            "body": d.get("body") if d.get("body") is not None
+            else {"error": f"no test response for {method} {path}"}}
+
+
+def sql_answer(conn: dict, sql: str) -> list:
+    low = (sql or "").lower()
+    for q in (conn or {}).get("queries") or []:
+        if q.get("match") and q["match"].lower() in low:
+            return list(q.get("rows") or [])
+    return []

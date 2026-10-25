@@ -124,6 +124,26 @@ MIGRATIONS: list[list[str]] = [
             at REAL NOT NULL)""",
         "CREATE INDEX IF NOT EXISTS login_failures_key ON login_failures(key, at)",
     ],
+    # 2 -- test data and test runs (0.2.0)
+    [
+        """CREATE TABLE IF NOT EXISTS test_data (
+            project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+            data TEXT NOT NULL DEFAULT '{}',
+            updated_at REAL NOT NULL)""",
+        """CREATE TABLE IF NOT EXISTS test_runs (
+            id TEXT PRIMARY KEY,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('view','app','script')),
+            subject TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL CHECK (status IN ('running','done','failed')),
+            inputs TEXT NOT NULL DEFAULT '{}',
+            summary TEXT NOT NULL DEFAULT '{}',
+            result TEXT,
+            created_at REAL NOT NULL,
+            finished_at REAL)""",
+        "CREATE INDEX IF NOT EXISTS test_runs_project ON test_runs(project_id, created_at)",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

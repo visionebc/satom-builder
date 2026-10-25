@@ -47,8 +47,10 @@ def create_app(overrides: dict | None = None) -> Flask:
 
     db.migrate(app.config["DB_PATH"])
     from .ai_loop import fail_stale_jobs
+    from .runtime import fail_stale as fail_stale_runs
     with db.session(app.config["DB_PATH"]) as conn:
         fail_stale_jobs(conn)
+        fail_stale_runs(conn)
 
     app.teardown_appcontext(db.close_request_db)
     app.before_request(security.new_nonce)
