@@ -6,7 +6,13 @@
   if (!root) { return; }
   var pid = root.getAttribute('data-pid');
   var base = '/api/projects/' + pid;
-  var el = SB.el;
+  // SB.el, minus null: SB.el appends every child (null throws) and sets every
+  // attribute (null becomes the text "null")
+  var el = function (tag, attrs, kids) {
+    var a = {};
+    Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) { a[k] = attrs[k]; } });
+    return SB.el(tag, a, (kids || []).filter(function (c) { return c !== null && c !== undefined; }));
+  };
   var needsSecrets = [];
   var lastJobProject = null;
 
