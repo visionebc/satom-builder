@@ -32,7 +32,7 @@
 .ed-sub { font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
 .ed-pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 0; }
 .ed-scroll { max-height: 280px; overflow: auto; background: var(--ed-surface-alt); border: 1px solid var(--ed-border-light); padding: 8px; border-radius: var(--ed-radius); }
-.ed-scroll-x { overflow-x: auto; max-width: 100%; }
+.ed-scroll-x { overflow-x: auto; max-width: 100%; position: relative; }  /* relative: an absolutely placed child (a visually-hidden label) stays inside the scroller instead of widening the page */
 .ed-link { background: none; border: 0; padding: 0; color: var(--ed-accent); text-decoration: underline; cursor: pointer; }
 
 /* header */

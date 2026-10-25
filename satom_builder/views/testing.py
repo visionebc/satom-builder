@@ -61,9 +61,9 @@ def _describe(conn, row, data, updated_at) -> dict:
             datasets, sources = inf.get("datasets") or [], inf.get("sources") or []
         except runtime.RuntimeUnavailable as exc:
             pack, why = None, exc.message
-    used = testdata.used_datasets(proj)
-    if proj.get("kind") in ("view", "widget"):
-        datasets = [d for d in datasets if d["key"] in used] or datasets
+    used = testdata.used_datasets(proj) if proj.get("kind") in ("view", "widget") \
+        else ["fleet_appliances"]
+    datasets = [d for d in datasets if d["key"] in used]
     stores = {s: {"columns": d["columns"], "from": d["from"]}
               for s, d in testdata.store_defs(proj, snap).items()}
     conns = {s: {"kind": d.get("kind") or "http", "from": d.get("from"),

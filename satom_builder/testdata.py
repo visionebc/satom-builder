@@ -282,8 +282,10 @@ def generate(project: dict, snapshot: dict | None, dataset_columns: dict,
     def pick(kind, key):
         return not want or f"{kind}:{key}" in want
 
-    keys = used_datasets(project) if project.get("kind") in ("view", "widget") else []
-    keys = keys or list(dataset_columns)          # an app: every dataset, for satom_select
+    # A view reads the datasets it declares. An app reads none: only the fleet,
+    # which answers "Load an appliance" and the satom_select sources.
+    keys = used_datasets(project) if project.get("kind") in ("view", "widget") \
+        else ["fleet_appliances"]
     for key in keys:
         cols = dataset_columns.get(key)
         if cols and pick("datasets", key):

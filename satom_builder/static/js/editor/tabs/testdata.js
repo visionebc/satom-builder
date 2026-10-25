@@ -254,7 +254,7 @@ export default {
     save.addEventListener("click", async () => {
       const st = document.getElementById("td-status");
       say(st, "Saving…", "busy");
-      try { const j = await ctx.api.saveTestdata(ctx.project.id, S.data); S.data = j.data; S.dirty = false; markDirty(); say(st, "Test data saved.", "ok"); } catch (e) { say(st, "Not saved: " + e.message, "bad"); }
+      try { const j = await ctx.api.saveTestdata(ctx.project.id, S.data); S.data = j.data; S.dirty = false; markDirty(); say(st, "Test data saved.", "ok"); ctx.say("Test data saved.", "ok"); } catch (e) { say(st, "Not saved: " + e.message, "bad"); }
     });
     panel.appendChild(card("Test data", [
       h("p", { class: "ed-help", text: "What a test run reads instead of SATOM's database. Datasets have the columns SATOM gives a view; stores start from your package's seed rows; connections answer the responses below and nothing leaves the Builder. Generated values are synthetic (lab names, documentation addresses), never a real installation's." }),
@@ -262,13 +262,14 @@ export default {
       h("div", { class: "ed-status", id: "td-status", role: "status", "aria-live": "polite" })], { icon: "bi-database-check", id: "td-card-head" }));
     const dsCols = {};
     (info.datasets || []).forEach((d) => { dsCols[d.key] = d; });
-    const keys = ctx.kind === "app" ? Object.keys(data.datasets) : (info.datasets || []).map((d) => d.key);
+    const keys = (info.datasets || []).map((d) => d.key);
     if (keys.length) panel.appendChild(h("h3", { class: "ed-sub", text: "Datasets" }));
     keys.forEach((k) => {
       const d = dsCols[k] || { key: k, label: k, columns: [] };
       data.datasets[k] = data.datasets[k] || { rows: [] };
       panel.appendChild(tableEditor(ctx, rerender, "ds-" + k, d.label || k, d.columns || [], data.datasets[k].rows,
-        { regen: () => generate(ctx, rerender, [`datasets:${k}`]), note: k, help: d.description, icon: "bi-table" }));
+        { regen: () => generate(ctx, rerender, [`datasets:${k}`]), note: k, icon: "bi-table",
+          help: ctx.kind === "app" ? "The fleet a test run sees: Load an appliance takes the first row, unless the step's answer below says otherwise." : d.description }));
     });
     const stores = info.stores || {};
     if (Object.keys(stores).length) panel.appendChild(h("h3", { class: "ed-sub", text: "Data stores" }));
