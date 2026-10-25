@@ -397,6 +397,8 @@ def start_job(app, *, project_id: int, user_id: int, work) -> str:
         conn.execute("INSERT INTO jobs (id, project_id, user_id, kind, status, rounds, "
                      "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
                      (job_id, project_id, user_id, "generate", "running", "[]", t, t))
+        from .chat import runner_id
+        conn.execute("INSERT INTO job_runners (job_id, runner) VALUES (?, ?)", (job_id, runner_id()))
 
     def target():
         with app.app_context(), db.session(app.config["DB_PATH"]) as conn:
@@ -435,10 +437,39 @@ def job_answer(row, progress: dict | None = None) -> dict:
             "project": res.get("project") if row["status"] == "done" else None}
 
 
+RESTARTED = "The Builder restarted while this job ran; start it again."
+STALE_AFTER = 2 * 3600
+
+
 def fail_stale_jobs(conn) -> int:
-    """At start-up: a job still 'running' was cut off by a restart."""
-    cur = conn.execute("UPDATE jobs SET status = 'failed', error = 'The Builder restarted "
-                       "while this job ran; start it again.', updated_at = ? "
-                       "WHERE status = 'running' AND updated_at < ?",
-                       (db.now(), db.now() - 3600))
-    return cur.rowcount
+    """At start-up (every gunicorn worker): a job still 'running' whose process
+    is gone (``job_runners``, pid:starttime as chat replies) was cut off by a
+    restart -- failed at once, with the reason on its activity too. A job of a
+    live worker is left alone; one without a runner row (started before
+    schema 6) or older than :data:`STALE_AFTER` is failed by age."""
+    from .chat import _alive
+    n = 0
+    now = db.now()
+    for r in conn.execute("SELECT j.id, j.updated_at, r.runner FROM jobs j LEFT JOIN job_runners r "
+                          "ON r.job_id = j.id WHERE j.status = 'running'").fetchall():
+        if r["runner"] is not None:
+            if _alive(r["runner"]) and now - r["updated_at"] < STALE_AFTER:
+                continue
+        elif now - r["updated_at"] < 3600:
+            continue
+        cur = conn.execute("UPDATE jobs SET status = 'failed', error = ?, updated_at = ? "
+                           "WHERE id = ? AND status = 'running'", (RESTARTED, now, r["id"]))
+        if cur.rowcount:
+            n += 1
+            snap = load_progress(conn, "job_progress", r["id"])
+            if snap:
+                snap.pop("server_now", None)
+                for st in snap.get("steps") or []:
+                    if st.get("state") == "run":
+                        st["state"] = "bad"
+                if snap.get("live") and snap["live"].get("phase") != "done":
+                    snap["live"]["phase"], snap["live"]["ended"] = "done", now
+                snap.setdefault("steps", []).append({"at": now, "text": "Failed: " + RESTARTED,
+                                                     "state": "bad", "detail": ""})
+                progress_saver(conn, "job_progress", r["id"])(snap)
+    return n

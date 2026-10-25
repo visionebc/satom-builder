@@ -203,6 +203,13 @@ MIGRATIONS: list[list[str]] = [
             data TEXT NOT NULL,
             updated_at REAL NOT NULL)""",
     ],
+    # 6 -- which process runs a Generate job (pid:starttime, as chat replies
+    # have): a restart fails the jobs it cut off at once, not an hour later
+    [
+        """CREATE TABLE IF NOT EXISTS job_runners (
+            job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+            runner TEXT NOT NULL)""",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

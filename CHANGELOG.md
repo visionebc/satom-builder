@@ -28,9 +28,20 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   The activity is stored (schema 5: `job_progress`, `chat_progress`), so
   leaving the page loses nothing, and a finished reply keeps it under
   "What it did". It holds what the model wrote, never the prompt or a secret.
+  The project's main page shows it too: its Generate said only "Status:
+  running" (requested: "show the state as in the dialog"); now the status
+  names the current step and the same activity follows.
 
 ### Fixed
 
+- **A Generate cut off by a restart is failed at once, not an hour later.**
+  An update restarted the lab while an author's Generate ran: the job stayed
+  "running" and the page waited for nothing (only jobs older than an hour
+  were failed). A job now records the process that runs it (schema 6:
+  `job_runners`, pid and start time, as chat replies already did); at
+  start-up every worker fails the jobs whose process is gone, with the
+  reason on the job and as the last step of its activity, and leaves the
+  jobs of live workers alone.
 - **The installers said they were 0.1.6.** `install-satom-builder.sh` and
   `satom-builder-setup.sh` of 0.2.0 and 0.3.0 printed "SATOM Builder 0.1.6",
   stamped `.env` with it and warned "This installer is 0.1.6; the code is
