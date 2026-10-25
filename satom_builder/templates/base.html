@@ -66,6 +66,8 @@
         <div class="fw-nav-section"><i class="bi bi-hammer fw-nav-section-icon"></i><span>Build</span></div>
         <a class="fw-nav-item {{ 'active' if ep.startswith('projects.') or ep.startswith('editor.') }}" href="{{ url_for('projects.index') }}">
           <i class="bi bi-boxes fw-nav-icon"></i><span>Projects</span></a>
+        <a class="fw-nav-item {{ 'active' if ep.startswith('library.') }}" href="{{ url_for('library.page') }}">
+          <i class="bi bi-journal-bookmark fw-nav-icon"></i><span>Library</span></a>
         <a class="fw-nav-item {{ 'active' if ep == 'me.publisher' }}" href="{{ url_for('me.publisher') }}">
           <i class="bi bi-patch-check fw-nav-icon"></i><span>Publisher key</span></a>
         <div class="fw-nav-section"><i class="bi bi-hdd-network fw-nav-section-icon"></i><span>SATOM</span></div>

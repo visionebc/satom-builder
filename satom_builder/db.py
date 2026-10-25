@@ -144,6 +144,16 @@ MIGRATIONS: list[list[str]] = [
             finished_at REAL)""",
         "CREATE INDEX IF NOT EXISTS test_runs_project ON test_runs(project_id, created_at)",
     ],
+    # 3 -- the target's library, cached per author (0.2.0)
+    [
+        """CREATE TABLE IF NOT EXISTS library_cache (
+            target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            fetched_at REAL NOT NULL,
+            data TEXT NOT NULL,
+            PRIMARY KEY (target_id, user_id, key))""",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

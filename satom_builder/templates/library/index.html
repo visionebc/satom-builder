@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Library — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-journal-bookmark me-2"></i>Library</h1></div>
+<div class="fw-card"><div class="fw-card-body">
+  <p>What a plugin builds on, read from a SATOM target with <strong>your</strong> token: the datasets a view reads and their columns, the data stores and their columns, the API Catalog with every endpoint, the Fortinet API library (builds, endpoints and fields), the step kinds of a diagram, the script SDK and the author guide. Structure only: no row of the target's data and no secret ever comes to the Builder.</p>
+  {% if targets %}
+  <div class="d-flex flex-wrap gap-2 align-items-end">
+    <div><label class="form-label" for="lib-target">SATOM target</label>
+      <select class="form-select form-select-sm" id="lib-target">{% for t in targets %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+    <button class="btn btn-sm btn-fw-outline" type="button" id="lib-refresh"><i class="bi bi-arrow-clockwise"></i> Refresh from SATOM</button>
+    <span class="sb-help" id="lib-cached"></span>
+  </div>
+  {% else %}
+  <p class="mb-0">You have no SATOM token yet: add one under <a href="{{ url_for('me.tokens') }}">My tokens</a>.</p>
+  {% endif %}
+</div></div>
+{% if targets %}
+<nav class="sb-lib-nav" aria-label="Library sections" id="lib-nav">
+  {% for id, label, icon in [("datasets", "Datasets", "bi-table"), ("stores", "Data stores", "bi-database"), ("apis", "API Catalog", "bi-journal-code"),
+                             ("fortinet", "Fortinet API library", "bi-shield"), ("steps", "Step kinds", "bi-diagram-3"), ("sdk", "Script SDK", "bi-filetype-py"),
+                             ("guide", "Author guide", "bi-book")] %}
+  <button type="button" class="btn btn-sm btn-fw-outline" data-section="{{ id }}" id="lib-tab-{{ id }}" aria-pressed="false"><i class="bi {{ icon }}"></i> {{ label }}</button>
+  {% endfor %}
+</nav>
+<div class="sb-lib-status" id="lib-status" role="status" aria-live="polite"></div>
+<div id="lib-body"></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/library.js') }}?v={{ app_version }}"></script>{% endblock %}

@@ -107,3 +107,21 @@
   /* a select inside a table cell keeps room for its value */
   .sb-role-select { min-width: 7.5rem; }
 }
+
+/* Library page (templates/library/index.html, js/library.js). */
+.sb-lib-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.sb-lib-nav button[aria-pressed="true"] { background: var(--fw-accent); border-color: var(--fw-accent); color: #fff; }
+.sb-lib-status { min-height: 20px; font-size: 13px; margin-bottom: 6px; }
+.sb-lib-status[data-tone="bad"] { color: #8B1C2A; }
+.sb-lib-status[data-tone="busy"] { color: var(--fw-text-secondary); }
+.sb-lib-table { font-size: 12.5px; }
+.sb-lib-table td { vertical-align: top; }
+.sb-lib-item { padding: 8px 0; border-bottom: 1px solid var(--fw-border-light); }
+.sb-lib-item:last-child { border-bottom: 0; }
+.sb-lib-h { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.sb-lib-ver, .sb-lib-ep { margin: 4px 0; }
+.sb-lib-ver > summary, .sb-lib-ep > summary { cursor: pointer; }
+.sb-lib-fields { margin: 6px 0 10px 18px; }
+.sb-chip { display: inline-block; background: var(--fw-surface-alt); border: 1px solid var(--fw-border); border-radius: 4px; padding: 0 5px; margin: 1px 0; font-size: 12px; }
+.sb-lib-pre { white-space: pre-wrap; font-size: 12.5px; background: var(--fw-surface-alt); border: 1px solid var(--fw-border); border-radius: 6px; padding: 12px; max-height: 70vh; overflow: auto; }
+.sb-lib-product { max-width: 260px; }

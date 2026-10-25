@@ -3,12 +3,13 @@ from __future__ import annotations
 
 
 def register(app) -> None:
-    from . import admin, api, auth, editor, me, projects, testing
+    from . import admin, api, auth, editor, library, me, projects, testing
     app.register_blueprint(auth.bp)
     app.register_blueprint(projects.bp)
     app.register_blueprint(editor.bp)
     app.register_blueprint(api.bp)
     app.register_blueprint(testing.bp)
+    app.register_blueprint(library.bp)
     app.register_blueprint(me.bp)
     app.register_blueprint(admin.bp)
 

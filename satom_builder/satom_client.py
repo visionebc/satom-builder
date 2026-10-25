@@ -8,8 +8,9 @@ token is invalid or lacks scope write". The token never appears in a message.
 from __future__ import annotations
 
 import json
+import re
 import ssl
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -29,7 +30,9 @@ SCOPES = {
     ("POST", "/import"): "admin",
     ("GET", "/publishers"): "read",
     ("POST", "/publishers"): "admin",
+    ("GET", "/library"): "read",
 }
+_LIB_PART = re.compile(r"^[0-9A-Za-z._-]{1,40}$")
 EXTRA = {
     ("POST", "/rehearse"): "the token's owner must be allowed to author in Plugin Studio",
     ("POST", "/import"): "the token's owner must be a SATOM super-admin",
@@ -252,6 +255,34 @@ class SatomClient:
 
     def publishers(self) -> list:
         return self._json(self._request("GET", "/publishers"))
+
+    # -- contract section 14: the library ----------------------------------
+    def _library_call(self, route: str) -> dict:
+        try:
+            return self._json(self._request("GET", route))
+        except SatomError as exc:
+            if exc.status == 404 and route == "/library":
+                raise SatomError(f"{self.host} runs a SATOM without the Builder library: it "
+                                 "needs SATOM 4.2.0 or later.", "no_library", 409) from None
+            raise
+
+    def library(self) -> dict:
+        j = self._library_call("/library")
+        if not isinstance(j, dict) or j.get("format") != "satom.builder-library/1":
+            raise SatomError("SATOM's library has an unknown format.", "satom_bad_answer", 502)
+        return j
+
+    def library_build(self, product: str, version: str, endpoint: str = "") -> dict:
+        if not _LIB_PART.match(product or "") or not _LIB_PART.match(version or "") \
+                or len(endpoint or "") > 200:
+            raise SatomError("Malformed product, version or endpoint.", "bad_request", 400)
+        route = "/library/fortinet/%s/%s" % (quote(product, safe=""), quote(version, safe=""))
+        if endpoint:
+            route += "?endpoint=" + quote(endpoint, safe="")
+        j = self._library_call(route)
+        if not isinstance(j, dict):
+            raise SatomError("SATOM's library answer is not an object.", "satom_bad_answer", 502)
+        return j
 
     def register_publisher(self, label: str, public_key_b64: str) -> dict:
         return self._json(self._request("POST", "/publishers",

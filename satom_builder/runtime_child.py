@@ -77,10 +77,12 @@ def _load_testdata(path: str):
 # --------------------------------------------------------------------------
 def op_info(pack: str, req: dict) -> dict:
     from satom_rules.app.services import plugin_sandbox as PS
+    from satom_rules.app.services import script_sdk as SDK
     from satom_rules.app.services import studio_satom as S
     return {"datasets": [{"key": k, "label": v[0], "description": v[1],
                           "columns": PS.dataset_columns(k)} for k, v in PS.DATASETS.items()],
-            "sources": [{"key": k, "label": lab} for k, lab in S.SOURCES]}
+            "sources": [{"key": k, "label": lab} for k, lab in S.SOURCES],
+            "sdk_doc": SDK.__doc__ or ""}
 
 
 def op_render(pack: str, req: dict) -> dict:
