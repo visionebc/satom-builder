@@ -33,6 +33,14 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   rejected.** `connections`, `stores`, `automations`... written next to
   `"app"` instead of inside it go into the app (gpt-oss lost two of three
   rounds of the lab run to "Unknown key(s)").
+- **Generate runs the app before calling it done.** SATOM's rules check a
+  diagram's shape, not what it does: the lab's FortiWeb -> FortiGate app
+  passed them and failed on its first loop (`{{ ip_list[i] }}` with the
+  counter named otherwise). After the rules pass, Generate and the Assistant
+  walk the app with SATOM's own runtime on generated test data (the test
+  fleet, a pinned connection answered from SATOM's endpoints), with the
+  inputs of its first automation; a failure goes back to the AI with the step
+  and the error, as a view's failed render already did.
 - **Test data for a connection pinned to a large API version.** One test
   answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
   test-data connection holds: generating test data failed with 400. A large

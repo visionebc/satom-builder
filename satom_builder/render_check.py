@@ -171,3 +171,57 @@ def make(pack, snapshot: dict, defs: dict):
         return [], "rendered with test data (%d attempt(s))" % len(attempts)
 
     return check
+
+
+# --------------------------------------------------------------------------
+# apps: walk the diagram on test data
+# --------------------------------------------------------------------------
+def app_inputs(candidate: dict) -> dict:
+    """The inputs an app runs with: its first automation's (what a scheduled
+    run gives), filled with a sample for every other field."""
+    app = ((candidate.get("app") or {}).get("app") or {})
+    autos = (candidate.get("app") or {}).get("automations") or []
+    given = dict((autos[0] or {}).get("inputs") or {}) if autos and isinstance(autos[0], dict) else {}
+    out = sample_inputs(app.get("fields"))
+    out.update({k: v for k, v in given.items() if v not in (None, "")})
+    return out
+
+
+def make_app(pack, snapshot: dict):
+    """-> ``check(candidate) -> (problems, note)`` for apps: SATOM's rules
+    check the diagram's shape, not what it does -- a step that reads a
+    variable no step set passes them and fails on its first run (lab,
+    2026-10-26: ``{{ ip_list[i] }}`` with the counter named ``counter``). The
+    diagram is walked with SATOM's own runtime on generated test data (the
+    test fleet, every connection answered from its endpoints), with the
+    inputs of its first automation."""
+    cols = dataset_columns(pack, {})
+
+    def check(candidate: dict):
+        if candidate.get("kind") != "app":
+            return [], ""
+        if runtime.needs_jail("app", candidate) and not runtime.bwrap_available():
+            return [], "not run: its script steps need the jail (bubblewrap) on this Builder"
+        test = testdata.generate(candidate, snapshot, cols, keys=["fleet_appliances"])
+        inputs = app_inputs(candidate)
+        req = runtime.build_request("app", candidate, snapshot, test, {"inputs": inputs})
+        try:
+            res = runtime.call(pack, req, timeout=runtime.RUN_TIMEOUT)
+        except runtime.RuntimeUnavailable as exc:
+            return [], "not run: " + exc.message
+        status = res.get("status")
+        if status in ("done", "waiting"):
+            n = len(res.get("steps") or [])
+            return [], "ran on test data: %s after %d step(s)" % (status, n)
+        steps = res.get("steps") or []
+        bad = next((s for s in reversed(steps) if s.get("outcome") == "error"), None)
+        trail = " -> ".join("%s(%s)" % (s.get("key"), s.get("outcome")) for s in steps[-8:])
+        msg = ("running it on test data with the inputs %s fails%s: %s. Steps: %s. Every "
+               "variable a template reads is set by an earlier step (a `set` step's \"name\", "
+               "another step's \"save_as\") or is a form field (`form.<field>`)."
+               % (json.dumps(inputs, ensure_ascii=False),
+                  " at step %s" % bad.get("key") if bad else "",
+                  str(res.get("error") or (bad or {}).get("detail") or status)[:600], trail))
+        return [{"where": "app.graph", "rule": "builder.test_run", "message": msg}], ""
+
+    return check

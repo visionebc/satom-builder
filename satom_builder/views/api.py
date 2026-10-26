@@ -508,7 +508,7 @@ def generate(pid):
 
     from .. import render_check
     rcheck = render_check.make(pack, snap, targets.dataset_defs(conn, t, g.user.id)) \
-        if proj.get("kind") in ("view", "widget") else None
+        if proj.get("kind") in ("view", "widget") else render_check.make_app(pack, snap)
 
     uid = g.user.id
 

@@ -255,7 +255,8 @@ def chat_send(cid):
                                test_schema=_test_schema(conn, row, pack, snap),
                                render_check=render_check.make(
                                    pack, snap, targets.dataset_defs(conn, t, g.user.id))
-                               if row["kind"] in ("view", "widget") else None,
+                               if row["kind"] in ("view", "widget")
+                               else render_check.make_app(pack, snap),
                                target=t)
     audit("chat.message", row["slug"], chat=cid, profile=prof["name"], files=len(ids))
     return ids_msg, 202

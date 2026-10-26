@@ -569,18 +569,23 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
         if not last.get("ok"):
             last = dict(last, problems=fortinet_apis.hints(last.get("problems") or [], built))
         if last.get("ok") and render_check is not None:
-            # SATOM's rules parse a template, they do not run it: render it
-            # (render_check.py) before calling the draft done
+            # SATOM's rules parse a template and a diagram, they do not run
+            # them: render the view / walk the app (render_check.py) on test
+            # data before calling the draft done -- the completed project, so a
+            # pinned connection answers from SATOM's endpoints
             if pg:
-                pg.step("Rendering the view with test data (SATOM's own runtime)")
+                pg.step("Running the app on test data (SATOM's own runtime)"
+                        if candidate.get("kind") == "app" else
+                        "Rendering the view with test data (SATOM's own runtime)")
             try:
-                rprobs, rnote = render_check(candidate)
+                rprobs, rnote = render_check(built)
             except Exception as exc:  # noqa: BLE001 -- a render check never sinks the job
                 rprobs, rnote = [], "not rendered: " + str(exc)[:200]
             if rprobs:
                 last = dict(last, ok=False, problems=list(last.get("problems") or []) + rprobs)
             elif pg and rnote:
-                pg.step("Render: " + rnote, "ok" if rnote.startswith("rendered") else "warn")
+                pg.step(("Test run: " if candidate.get("kind") == "app" else "Render: ") + rnote,
+                        "ok" if rnote.startswith(("rendered", "ran")) else "warn")
         rec = {"n": n, "ok": bool(last.get("ok")), "at": db.now(),
                "problems": last.get("problems") or [],
                "warnings": last.get("warnings") or []}
