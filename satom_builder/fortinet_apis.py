@@ -710,9 +710,19 @@ def fields_lint(project: dict) -> list[dict]:
         elif method in _WRITES:
             checks = [(str(prm.get("path") or ""), op.get("fields"))]
         for url, rec in checks:
+            sent = _sent_keys(product, prm, url)
+            if (product == "fortiadc" and method == "POST" and "_child_" not in url
+                    and _json_of(prm.get("body")) is not None and "mkey" not in sent):
+                # lab, 2026-10-26: {"address": ip} -- the entry got no name, so the
+                # next run could not find it and created it again
+                out.append({"where": "app.graph", "rule": "builder.library_fields", "message": (
+                    "%s: POST %s does not send mkey: a FortiADC entry is created with its name "
+                    "in mkey (e.g. \"mkey\": \"fwb-{{ appliance.name }}\") and found again "
+                    "with GET ?mkey=<name> (HTTP 200 {\"payload\": null} when it does not "
+                    "exist); without a name the next run cannot find what this one created"
+                    % (n.get("key"), url[:160]))})
             if not rec:
                 continue
-            sent = _sent_keys(product, prm, url)
             create = rec.get("create") or {}
             need = [f for f in create.get("fields") or [] if f.get("required")]
             missing = [f for f in need if f.get("key") not in sent]

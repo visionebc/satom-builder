@@ -30,7 +30,9 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   is a problem that names the real ones -- also on the Check button, which
   showed only SATOM's rules. Test answers hold the real fields, and an app on a
   schedule that writes is walked again on a simulated device that keeps its
-  writes: adding the same thing on the second day is a problem.
+  writes: adding the same thing on the second day is a problem (the message
+  lists what the second run decided). A FortiADC create without its name in
+  `mkey` is a problem too: the next run could not find what it created.
 
 - **The AI calls a Fortinet device with SATOM's real endpoints, and a wrong
   path is refused.** Requested: "the API pack should go to the Builder, so it

@@ -295,12 +295,21 @@ def _twice_on_devices(pack, candidate, snapshot, test, inputs, sims: dict, note:
     if again:
         slug, w = again[0]
         product = sims.get(slug, "")
+        # what the second run decided before it wrote again: the clue
+        decided = [x for x in second.get("steps") or [] if x.get("kind") == "decision"
+                   or str(x.get("outcome")) in ("yes", "no")][-4:]
+        trail = "; ".join("%s: %s" % (x.get("key"), str(x.get("detail") or x.get("outcome"))[:120])
+                          for x in decided)
         msg = ("it runs on a schedule, and on a device that keeps what it is told the second "
                "run POSTs again what the first wrote (connection %s: POST %s %s). What it reads "
                "before writing did not show its own write -- on the device it would add the same "
-               "thing every day. Read the list the device answers (%s) and compare with that; a "
-               "default([]) over a path that does not exist hides it."
-               % (slug, w[1], w[3][:200], _LIST_SHAPE.get(product, "the list")))
+               "thing every day.%s Read the list the device answers (%s), find the entry by the "
+               "name it was created with, and decide with a test that can be true: a default([]) "
+               "over a path that does not exist, or a list of values that never holds the one "
+               "searched, hides it." % (
+                   slug, w[1], w[3][:200],
+                   (" The second run decided: %s." % trail) if trail else "",
+                   _LIST_SHAPE.get(product, "the list")))
     else:
         bad = next((x for x in reversed(second.get("steps") or []) if x.get("outcome") == "error"),
                    None)
