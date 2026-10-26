@@ -33,6 +33,11 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   rejected.** `connections`, `stores`, `automations`... written next to
   `"app"` instead of inside it go into the app (gpt-oss lost two of three
   rounds of the lab run to "Unknown key(s)").
+- **Test data for a connection pinned to a large API version.** One test
+  answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
+  test-data connection holds: generating test data failed with 400. A large
+  version now gets answers for the endpoints the diagram calls, plus the
+  catch-alls.
 - **Room for the answer.** An app's prompt no longer carries the views'
   section of SATOM's author guide (22k characters of dataset lists on a1)
   nor the step kinds a second time: 80 KB -> about 52 KB before the endpoint

@@ -266,19 +266,47 @@ def _api_ops(project: dict, conn: dict) -> list[dict]:
     return []
 
 
+def _used_ops(project: dict, conn: dict, ops: list[dict]) -> list[dict]:
+    """The endpoints of *ops* the diagram's api_call steps on *conn* call
+    (by endpoint id, or by method + path with templates as wildcards)."""
+    steps = [n.get("params") or {} for n in
+             ((_app_body(project).get("app") or {}).get("graph") or {}).get("nodes") or []
+             if isinstance(n, dict) and n.get("kind") == "api_call"
+             and (n.get("params") or {}).get("connection") == conn.get("slug")]
+    tpl = re.compile(r"\{\{.*?\}\}|\{%.*?%\}")
+    out = []
+    for o in ops:
+        oseg = [x for x in str(o.get("path") or "").split("/") if x]
+        for prm in steps:
+            if prm.get("operation") and prm.get("operation") == o.get("id"):
+                out.append(o)
+                break
+            want = [x for x in tpl.sub("\x00", str(prm.get("path") or "").split("?")[0]).split("/") if x]
+            if str(prm.get("method") or "GET").upper() == o.get("method") and len(want) == len(oseg) \
+                    and all(w == "\x00" or h.startswith("{") or w == h for w, h in zip(want, oseg)):
+                out.append(o)
+                break
+    return out[:MAX_RESPONSES - 2]
+
+
 def connection_template(project: dict, conn: dict) -> dict:
     if conn.get("kind") == "postgres":
         return {"queries": [{"match": "SELECT", "rows": [{"id": 1, "name": "row-1"}]}]}
     responses = []
-    for op in _api_ops(project, conn):
+    ops = _api_ops(project, conn)
+    if len(ops) > MAX_RESPONSES - 2:
+        # a large version (a build of SATOM's API library is ~3,700 endpoints):
+        # answer the endpoints this connection's steps call, plus the catch-alls
+        ops = _used_ops(project, conn, ops)
+    for op in ops:
         path = re.sub(r"\{[^}/]+\}", "*", str(op.get("path") or "/"))
         body = [{"id": 1, "name": "item-1"}] if op.get("method", "GET") == "GET" else {"ok": True}
         responses.append({"method": str(op.get("method") or "GET").upper(), "path": path,
                           "status": 200, "body": body})
-    if not responses:
-        responses = [{"method": "GET", "path": "*", "status": 200,
-                      "body": {"items": [{"id": 1, "name": "item-1"}]}},
-                     {"method": "*", "path": "*", "status": 200, "body": {"ok": True}}]
+    if not responses or len(ops) < len(_api_ops(project, conn)):
+        responses += [{"method": "GET", "path": "*", "status": 200,
+                       "body": {"items": [{"id": 1, "name": "item-1"}]}},
+                      {"method": "*", "path": "*", "status": 200, "body": {"ok": True}}]
     return {"responses": responses,
             "default": {"status": 404, "body": {"error": "no test response for this request"}}}
 
