@@ -41,9 +41,9 @@ After five wrong passwords for one user name (or twenty from one address) within
 |---|---|---|---|
 | **View** | A page in SATOM (Custom Views). It *reads* SATOM's data — every dataset: the device cache (FortiGate rules and addresses, FortiWeb policies, FortiADC pools…), the fleet, the administrator datasets — and shows it, filtered by input parameters such as an IP. It never changes anything. | search, look up, report, list | *Which firewall rules use this IP?* |
 | **Widget** | A small tile on a SATOM dashboard: a view sized for a glance. | a count, a status, a short list | *Server policies without a WAF profile: 3* |
-| **App** | A Plugin Studio app: a form and a diagram of steps that *do* things — call an API, read and write data stores, run a sandboxed script, act on appliances, ask for approval. It **cannot read SATOM's datasets**. | requests and workflows that create or change something | *Publish a site: reserve the IP in DDI, create the FortiWeb policy, ask for approval* |
+| **App** | A Plugin Studio app: a form and a diagram of steps that *do* things — call an API, read and write data stores, run a sandboxed script, act on appliances, ask for approval. It reads the **list of devices** SATOM manages (step *Read SATOM's appliances*) but not the other datasets, and it can **run on a schedule** (Automations) with nobody filling in the form. | requests and workflows that create or change something, also every day on their own | *Publish a site: reserve the IP in DDI, create the FortiWeb policy, ask for approval* — or, every day, *put the IP of every FortiWeb in a FortiGate address group* |
 
-Rule of thumb: **show or search what SATOM already knows → a view** (or a widget on a dashboard); **do something — create, change, call another system, ask for approval → an app**. So "search an IP in the FortiGate rules" is a view. SATOM shows the same words in Report Studio and Plugin Studio.
+Rule of thumb: **show or search what SATOM already knows → a view** (or a widget on a dashboard); **do something — create, change, call another system, ask for approval, keep something in step on a schedule → an app** (with an automation for the schedule). So "search an IP in the FortiGate rules" is a view, and "every day, add each new FortiWeb's IP to a FortiGate group" is an app with an automation. SATOM shows the same words in Report Studio and Plugin Studio.
 
 The kind can be changed later in the project settings (**Kind**): the draft keeps everything, but only the new kind's parts go into the package (a view packs its files, datasets and parameters; an app its form, diagram, stores, connections and scripts), and the last check is cleared.
 
@@ -138,6 +138,14 @@ The **Test run** tab runs the **saved** project with SATOM's own runtime, taken 
 - **A script** (also from the Scripts tab: **Run on test data**) runs in SATOM's jail with SATOM's SDK: `inputs`, `result`, `log` and `connection()`, answered by the test data. The result, the log, the exit code and the connection calls are shown.
 
 Every run is kept: the history lists the last 50 runs of the project, with their inputs (passwords masked), and a run goes on if you close the page. Test runs need SATOM 4.2.0 or later on the target; script runs need `bubblewrap` on the Builder server (the installer installs it; the tab says so when it is missing).
+
+### 4.3.1 Automations: the app on a schedule
+
+An app's **Automations** tab says when it runs on its own: a name, **when** (every N minutes/hours/days — at least 5 minutes —, daily at a time, weekly on a day, monthly on a day, or a cron expression; times are the SATOM server's clock), the **form values** (nobody fills in the form then, so every required field is given here) and a description. The tab checks as you type; the target's rules check it again (rules `app.automations`).
+
+In SATOM each automation becomes an entry of **Automations** ("Run a Plugin Studio app") that runs the app's **published** version as the user who imports it. The import creates them **switched off** — the app itself lands as a draft — so: publish the app in SATOM, then turn its automations on in Automations. An automation that already exists there keeps that server's schedule and values. The app's page in SATOM lists its automations; deleting the app deletes them.
+
+To act on SATOM's devices, start the diagram with **Read SATOM's appliances** (the devices with `name`, `kind`, `host`, `ip`…, filtered by product, e.g. every FortiWeb); in a test run it reads the test data's `fleet_appliances`. A target whose SATOM does not know automations yet says so on the tab.
 
 ### 4.4 From the Builder to production
 

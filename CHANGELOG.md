@@ -7,6 +7,18 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Added
 
+- **Automations: an app on a schedule.** Requested: "every time a FortiWeb
+  is added to SATOM, send a rule to the FortiGate that adds its IP to a
+  specific group" -- the AI answered "make it a view", which can neither run
+  on its own nor write -- and "the schedule joins the Automations section: in
+  the Builder an Automations tab". An app's new **Automations** tab sets when
+  it runs (interval of 5 minutes or more, daily, weekly, monthly, cron) and
+  the form values it runs with, checked as you type; the package carries
+  them in app.json `automations` (contract section 18) and SATOM creates each
+  as a switched-off entry of Automations next to the draft app. Test runs
+  answer the step **Read SATOM's appliances** (`satom_appliances`) from the
+  test data's fleet with SATOM's own code. Needs the SATOM of the same round.
+
 - **View, widget or app: explained where you choose, and changeable.**
   Requested: "let me change a project from app to view, but how does anyone
   know the difference? Put it in SATOM and in the Builder: why a search is
@@ -129,6 +141,15 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   cannot be continued (404, the same as a missing one).
 
 ### Fixed
+
+- **The AI sent every request that touched SATOM's data to a view.** The
+  note an app's prompt carries (2026-10-25) said "an app cannot read SATOM's
+  data: answer that it is a view's job" -- true for "show the rules that use
+  this IP", wrong for "every day, put each FortiWeb's IP in a FortiGate
+  group". It now says: showing or searching is a view's job; everything that
+  acts -- on a schedule too -- is an app, which reads the devices with
+  `satom_appliances` and runs with automations. The kind explanations say
+  the same (SATOM's words).
 
 - **A view the AI drafts is rendered before it is called done.** In the lab,
   asked for "the FortiGate rules that use an IP", the model wrote a view that

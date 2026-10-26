@@ -344,9 +344,13 @@ def _install(world: _World, req: dict, libdir: str) -> None:
 
     real_satom_run = S.run
 
+    # satom_appliances (contract section 18) reads the fleet: here the test
+    # data's fleet_appliances rows, through SATOM's own filter and shape.
+    S._fleet_rows = lambda: [dict(r) for r in fleet]
+
     def satom_run(node, ctx):
-        if node.get("kind") == "render_names":
-            return real_satom_run(node, ctx)        # pure: SATOM's own naming rules
+        if node.get("kind") in ("render_names", "satom_appliances"):
+            return real_satom_run(node, ctx)        # pure: SATOM's own code over test data
         from satom_rules.app.services.studio_flow import render
         plan = {k: v for k, v in (node.get("params") or {}).items() if k != "save_as"}
         try:

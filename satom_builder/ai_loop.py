@@ -51,7 +51,8 @@ Markdown around it. The object is the plugin draft, with these keys:
 - for a view or a widget: "files" = {"body.jinja": ..., "style.css": ...,
   "script.js": ...}, "datasets" = [dataset names], "params" = [param objects];
 - for an app: "app" = the app.json body {"app": {...}, "stores": [...],
-  "connections": [...], "apis": [...], "scripts": [...]}.
+  "connections": [...], "apis": [...], "scripts": [...], "automations": [...]}
+  ("automations": when it runs on a schedule, see the author guide).
 
 Keys you leave out keep their current value. The Builder writes the kind,
 "format", "min_satom" and the file hashes of plugin.json itself: leave them
@@ -131,18 +132,29 @@ def dataset_summary(keys) -> dict:
 #: What an app's prompt says about datasets instead of listing them (lab,
 #: 2026-10-25: an app's prompt listed the ~900 dataset keys, no diagram step
 #: can read one, and the model answered "SATOM has no FortiGate dataset").
+#: Rewritten 2026-10-26: the first version sent EVERY request that touched
+#: SATOM's data to a view -- "every day, put each new FortiWeb's IP in a
+#: FortiGate address group" came back as "make it a view", which can neither
+#: run on its own nor write. Showing data is a view's job; acting on the
+#: devices, on a schedule too, is an app's (contract section 18).
 APP_DATASET_NOTE = (
-    "An app cannot read SATOM's datasets: no diagram step reads the device cache "
-    "(FortiGate, FortiWeb, FortiADC... objects) or a plugin dataset. Views and widgets read "
-    "them -- counted below, so they DO exist on this server. When the request needs that "
-    "data (look an IP up in the firewall rules, list objects, join two products...), do not "
-    "build an app around it and never say the data does not exist: answer with only "
-    "{\"message\"} explaining that it is a view's job -- a view with an input parameter "
-    "(for example the IP) reads those datasets and filters them -- and that the author "
-    "switches this project to a view (project page > Project settings > Kind: View; the "
-    "draft is kept) and asks again. Rule: show or search what SATOM knows = a view; do "
-    "something (create, change, call another system, ask for approval) = an app. Build an "
-    "app only when the request is a form and a diagram over the steps listed in the schema.")
+    "Showing or searching SATOM's data (FortiGate rules, FortiWeb policies, any device-cache "
+    "object or plugin dataset -- counted below, so they DO exist on this server) is a view's "
+    "job: no diagram step reads those datasets. When the request ONLY shows or searches that "
+    "data (look an IP up in the firewall rules, list objects, a report), answer with only "
+    "{\"message\"}: a view does it -- a view with an input parameter (for example the IP) "
+    "-- and the author switches this project to a view (Project settings > Kind: View; the "
+    "draft is kept). Never say the data does not exist. Everything that ACTS is an app: "
+    "create, change, call another system (a FortiGate's REST API through an HTTP "
+    "connection), ask for approval, keep something in step. An app reads the devices SATOM "
+    "manages with the step satom_appliances (each device's id, name, kind, host, ip...: "
+    "\"every FortiWeb\" is product fortiweb) and runs on its own with automations "
+    "(app.json \"automations\", see the author guide: e.g. daily at 02:00). For a request "
+    "such as \"when a FortiWeb is added, put its IP in a FortiGate address group\" build "
+    "the app: satom_appliances -> read the group from the FortiGate -> create what is "
+    "missing (an address per IP, then the group's members) -> an automation that runs it "
+    "daily; a second run must change nothing. A FortiGate's API is reached through an "
+    "HTTP connection (no secret in the draft: SATOM asks for the token on import).")
 
 
 #: SATOM's plugin sandbox (plugin_sandbox._SANDBOX: ImmutableSandboxedEnvironment,
@@ -177,8 +189,9 @@ VIEW_JINJA_NOTES = [
 
 
 def app_dataset_note(keys) -> dict:
-    """For an app's prompt: why it reads no dataset, and how many there are
-    per product for a view (names only for views: their prompt lists them)."""
+    """For an app's prompt: what is a view's job and what is an app's, and
+    how many datasets there are per product for a view (names only for views:
+    their prompt lists them)."""
     per: dict = {}
     for k in keys or []:
         prod = str(k).split("_", 1)[0]

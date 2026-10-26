@@ -140,7 +140,7 @@ def validate_patch(body, conn=None) -> dict:
             raise ShapeError("app must be an object (the app.json body).")
         if v and not isinstance(v.get("app", {}), dict):
             raise ShapeError("app.app must be an object.")
-        for k in ("stores", "connections", "apis", "scripts"):
+        for k in ("stores", "connections", "apis", "scripts", "automations"):
             if k in v and not isinstance(v[k], list):
                 raise ShapeError(f"app.{k} must be a list.")
         for c in v.get("connections") or []:

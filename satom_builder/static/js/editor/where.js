@@ -15,6 +15,7 @@
  *   connections[<slug>]                             -> connections tab
  *   apis[<slug>][@<version>] | apis[<slug>].operations[<id>] -> apis tab
  *   scripts[<slug>][.files[<file>]][:<line>]        -> scripts tab
+ *   automations[<name>] | automations              -> automations tab
  * A line may also be written " line N" / "(line N)" at the end, or carried
  * by the message ("... line 12 ..." for a file target). */
 
@@ -88,6 +89,8 @@ export function parseWhere(where, message, kind) {
     }
     case "connections":
       return { tab: "connections", id: arg };
+    case "automations":
+      return { tab: "automations", id: arg };
     case "apis": {
       let id = arg, version = null;
       if (id && id.includes("@")) [id, version] = id.split("@");
@@ -108,7 +111,7 @@ export function parseWhere(where, message, kind) {
 
 /* The tabs a project kind shows; a target on a tab the kind lacks goes to Raw. */
 export function tabsFor(kind) {
-  if (kind === "app") return ["form", "diagram", "actions", "stores", "connections", "apis", "design", "scripts", "testdata", "database", "testrun", "chat", "raw"];
+  if (kind === "app") return ["form", "diagram", "actions", "stores", "connections", "apis", "design", "scripts", "automations", "testdata", "database", "testrun", "chat", "raw"];
   return ["files", "datasets", "params", "preview", "testdata", "database", "testrun", "chat", "raw"];
 }
 

@@ -32,15 +32,20 @@ GUIDE = {
         "what": "A Plugin Studio app: a form the user fills in and a diagram of steps that DO "
                 "things -- call an API (DDI, NetBox, any HTTP), read and write data stores, run "
                 "a sandboxed script, act on appliances (create a FortiWeb server policy, "
-                "reserve an IP), ask a person to approve. It cannot read SATOM's datasets.",
-        "use_for": "requests and workflows that create or change something",
+                "reserve an IP), ask a person to approve. It reads the list of devices SATOM "
+                "manages (step satom_appliances) but not the other datasets, and it can run on "
+                "a schedule (Automations), with no person filling in the form.",
+        "use_for": "requests and workflows that create or change something, also every day "
+                   "on their own",
         "example": "Publish a site: reserve the IP in DDI, create the FortiWeb policy, ask for "
-                   "approval",
+                   "approval. Or, every day: put the IP of every FortiWeb in a FortiGate "
+                   "address group",
     },
 }
 
 RULE = ("Show or search what SATOM already knows: a view (or a widget on a dashboard). "
-        "Do something -- create, change, call another system, ask for approval: an app.")
+        "Do something -- create, change, call another system, ask for approval, keep "
+        "something in step on a schedule: an app (with an automation for the schedule).")
 
 SWITCH_NOTE = ("Changing the kind keeps everything in the draft, but only the new kind's parts "
                "go into the package: a view packs its files, datasets and parameters; an app "
