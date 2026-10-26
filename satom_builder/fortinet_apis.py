@@ -278,8 +278,24 @@ def prompt_for(want: dict, builds: dict, resolve, taken=()) -> dict | None:
 
 
 # the path may hold a template with spaces ({{ form.group }})
-_NOT_EP = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE) (/.*?) is not an endpoint in API "
+_NOT_EP = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE) ((?:/|\{\{).*?) is not an endpoint in API "
                      r"(\S+) (\S+)")
+#: a path built as ONE expression: {{ '/api/v2/cmdb/firewall/address/' + ip }}
+_WHOLE = re.compile(r"^\{\{\s*['\"](/[^'\"]*)['\"](.*)\}\}$", re.S)
+
+
+def literal_path(path: str) -> str:
+    """A whole-path expression rewritten with literal segments, or ''."""
+    m = _WHOLE.match((path or "").strip())
+    if not m:
+        return ""
+    head, rest = m.group(1), m.group(2)
+    parts = [x.strip() for x in rest.split("+")[1:]]
+    out = head
+    for x in parts:
+        lit = re.fullmatch(r"['\"]([^'\"]*)['\"]", x)
+        out += lit.group(1) if lit else "{{ %s }}" % x
+    return out
 _TPL = re.compile(r"\{\{.*?\}\}|\{%.*?%\}")
 
 
@@ -317,7 +333,12 @@ def hints(problems: list, project: dict) -> list:
         m = _NOT_EP.search(str((p or {}).get("message") or "")) if isinstance(p, dict) else None
         e = apis.get((m.group(3), m.group(4))) if m else None
         if m and e is not None and m.group(3) in PRODUCTS:
-            near = nearest(e, m.group(1), m.group(2))
+            lit = literal_path(m.group(2))
+            if lit:
+                p = dict(p, message=p["message"] + " -- the path is one expression, so it cannot "
+                         "be matched to an endpoint: write it literally with a template only in "
+                         "a segment, e.g. %s" % lit)
+            near = nearest(e, m.group(1), lit or m.group(2))
             if near:
                 p = dict(p, message=p["message"] + " -- nearest endpoints of %s %s: %s"
                          % (m.group(3), m.group(4), "; ".join(near)))

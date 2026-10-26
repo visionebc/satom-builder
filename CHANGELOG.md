@@ -49,10 +49,14 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   second run.** The lab's armed run on fgt02 added FortiWeb 192.0.2.82 to the
   group, and the next run failed with HTTP 500: the address existed. An app
   with automations that POSTs on a connection pinned to SATOM's API library
-  is walked twice; on the second walk every POST answers as FortiOS does for
-  an existing entry, and a failure (`builder.second_run`) tells the AI to read
-  first (GET `<path>/{key}`: a 404 takes the error arrow) and create only
-  what is missing.
+  and reads nothing from it first is walked twice; on the second walk every
+  POST answers as FortiOS does for an existing entry, and a failure
+  (`builder.second_run`) tells the AI to read first (GET `<path>/{key}`: a
+  404 takes the error arrow) and create only what is missing. An app that
+  reads first decides from what it read, which canned answers cannot
+  reproduce: it is not walked again (that flagged a correct app). A path
+  written as one expression (`{{ '/api/...' + ip }}`) gets its literal form
+  in the problem.
 - **Test data for a connection pinned to a large API version.** One test
   answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
   test-data connection holds: generating test data failed with 400. A large

@@ -195,18 +195,25 @@ ALREADY_EXISTS = {"method": "POST", "path": "**", "status": 500,
 
 def _second_run(candidate: dict):
     """The connections to answer "already exists" on a second walk, or None:
-    only an app on a schedule (it runs again with the same devices) that
-    writes to a connection pinned to SATOM's API library."""
+    an app on a schedule (it runs again with the same devices) that POSTs to
+    a connection pinned to SATOM's API library WITHOUT reading anything from
+    it first. An app that reads first (an entry, a list, a rule's members)
+    decides from what it read, which canned test answers cannot reproduce --
+    walking it again would flag a correct app (lab, 2026-10-26); the armed
+    runs on the device are its test."""
     body = candidate.get("app") or {}
     if not body.get("automations"):
         return None
     from . import fortinet_apis
     pinned = {c for c, _p, _b in fortinet_apis.pins(candidate)}
-    used = {str((n.get("params") or {}).get("connection") or "")
-            for n in ((body.get("app") or {}).get("graph") or {}).get("nodes") or []
-            if isinstance(n, dict) and n.get("kind") == "api_call"
-            and str((n.get("params") or {}).get("method") or "GET").upper() == "POST"}
-    hit = sorted(pinned & used)
+    posts, reads = set(), set()
+    for n in ((body.get("app") or {}).get("graph") or {}).get("nodes") or []:
+        if not isinstance(n, dict) or n.get("kind") != "api_call":
+            continue
+        prm = n.get("params") or {}
+        m = str(prm.get("method") or "GET").upper()
+        (posts if m == "POST" else reads if m == "GET" else set()).add(str(prm.get("connection") or ""))
+    hit = sorted((pinned & posts) - reads)
     return hit or None
 
 
