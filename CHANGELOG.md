@@ -5,6 +5,22 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-26
+
+**Apps that act on a Fortinet device on a schedule, built against the device's
+real API (needs SATOM 4.5.0).** An app gets an **Automations** tab (it runs on
+a schedule in SATOM's Automations) and reads SATOM's devices; a connection to
+a FortiGate, FortiWeb, FortiADC, FortiAuthenticator or FortiAnalyzer is pinned
+to a build of **SATOM's API library**, so the AI, the check, the test run and
+the import all use the device's real endpoints and fields. Generate runs an app
+before calling it done -- and, for an app on a schedule that writes, runs it
+again on a simulated device that remembers, so an app that would add the same
+thing every day is refused. Also: every project installs in the right SATOM
+ADOM, the AI window is a conversation you can minimize and continue, Generate
+shows what the AI is doing and says what it built and left out, projects have
+search and filters, an icon picker and a kind you can change. On a SATOM older
+than 4.5.0 the Builder keeps working and says which features need the upgrade.
+
 ### Added
 
 - **Every Fortinet device kind, not just FortiGate** (contract section 19.1).
