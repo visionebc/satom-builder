@@ -191,14 +191,17 @@ def library_completion(conn, target_row, user_id: int):
     return lambda project: FA.complete(project, resolve)
 
 
-def library_prompt(conn, target_row, user_id: int, project: dict, text: str):
-    """The Fortinet endpoint index an app's prompt carries, or None."""
+def library_prompt(conn, target_row, user_id: int, project: dict, text: str,
+                   snapshot: dict | None = None):
+    """The Fortinet endpoint index an app's prompt carries, or None. The
+    *snapshot*'s connections are the slugs a new pin must not take."""
     from . import fortinet_apis as FA
     if target_row is None or project.get("kind") != "app":
         return None
     builds = FA.library_builds(library(conn, target_row, user_id))
+    taken = ((snapshot or {}).get("existing") or {}).get("connections") or {}
     return FA.prompt_for(FA.plan(text, project, builds), builds,
-                         catalog_resolver(conn, target_row, user_id))
+                         catalog_resolver(conn, target_row, user_id), taken=list(taken))
 
 
 def dataset_defs(conn, target_row, user_id: int) -> dict:

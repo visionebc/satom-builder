@@ -27,8 +27,9 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   fleet's first) and **Call an API** searches the build's endpoints. A call
   to a Fortinet REST path on a connection pinned nowhere (it would reach
   SATOM unchecked), and a pinned package connection whose name SATOM already
-  has without that pin (the import keeps SATOM's), are problems too. Needs
-  the SATOM of the same round.
+  has without that pin (the import keeps SATOM's), are problems too; the
+  prompt proposes a free slug for the pinned connection (`fortigate-801`).
+  Needs the SATOM of the same round.
 - **An answer with the app's parts in the wrong place is used, not
   rejected.** `connections`, `stores`, `automations`... written next to
   `"app"` instead of inside it go into the app (gpt-oss lost two of three

@@ -177,8 +177,8 @@ def _common_prefix(paths: list[str]) -> str:
 PIN_NOTE = (
     "To call a Fortinet device, define an HTTP connection IN THE PACKAGE (app.connections) "
     "pinned to SATOM's API library: \"api\": \"<product>\", \"api_version\": \"<build>\" (the "
-    "build below), with a slug no connection on the server has (a server connection keeps "
-    "its own settings). Do NOT write an \"apis\" entry for it: the Builder adds SATOM's "
+    "build below), with the slug \"connection_slug\" below (a server connection with the same "
+    "slug would keep its own settings). Do NOT write an \"apis\" entry for it: the Builder adds SATOM's "
     "endpoint list. In each api_call leave \"operation\" empty and write \"method\" and "
     "\"path\": the path must be an endpoint below (prefix + directory/object; a table's "
     "entry is /{key}, a child list /{key}/<list>), or SATOM refuses the package. Put a "
@@ -231,7 +231,18 @@ def plan(text: str, project: dict, builds: dict) -> dict:
     return out
 
 
-def prompt_for(want: dict, builds: dict, resolve) -> dict | None:
+def free_slug(product: str, build: str, taken) -> str:
+    """A connection slug for a pin that no server connection has:
+    ``fortigate-801``, then ``fortigate-801-2``..."""
+    base = "%s-%s" % (product, re.sub(r"[^0-9a-z]+", "", str(build).lower()))
+    taken = set(taken or ())
+    slug, n = base, 2
+    while slug in taken:
+        slug, n = "%s-%d" % (base, n), n + 1
+    return slug
+
+
+def prompt_for(want: dict, builds: dict, resolve, taken=()) -> dict | None:
     """The prompt section for ``want`` ({product: build}); products past
     :data:`INDEX_BUDGET`, or that SATOM cannot serve, are named with their
     build and endpoint count only. None when nothing is wanted and the
@@ -254,6 +265,10 @@ def prompt_for(want: dict, builds: dict, resolve) -> dict | None:
         entries[p] = e
         used += size
     out = prompt_section(entries, {p: v for p, v in others.items() if p not in want})
+    for p, b in out["builds"].items():
+        # a slug the server does not have: a server connection keeps its own
+        # settings on import, so the pin would be lost (lab, 2026-10-26)
+        b["connection_slug"] = free_slug(p, b["api_version"], taken)
     if skipped:
         out["not_listed"] = skipped
     return out

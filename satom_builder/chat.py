@@ -205,7 +205,7 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
                 library = complete = None
                 if project.get("kind") == "app" and target is not None:
                     from . import targets
-                    library = targets.library_prompt(conn, target, user_id, project, text)
+                    library = targets.library_prompt(conn, target, user_id, project, text, snap)
                     complete = targets.library_completion(conn, target, user_id)
                 res = ai_loop.run(adapter, pack, snap, project, author_text, assets,
                                   max_rounds=max_rounds, on_round=on_round,

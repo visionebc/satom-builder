@@ -466,7 +466,7 @@ def generate_preview(pid):
     if err:
         return err
     proj = projects.to_api(db.get(), row)
-    library = targets.library_prompt(db.get(), t, g.user.id, proj, author_text)
+    library = targets.library_prompt(db.get(), t, g.user.id, proj, author_text, snap)
     system, user = ai_loop.build_prompt(guide, snap, proj, author_text, request=prompt,
                                         library=library)
     return {"system": system, "user": user,
@@ -515,7 +515,7 @@ def generate(pid):
     def work(job_id, jconn, update, progress):
         library = complete = None
         if proj.get("kind") == "app":
-            library = targets.library_prompt(jconn, t, uid, proj, author_text)
+            library = targets.library_prompt(jconn, t, uid, proj, author_text, snap)
             if library and library.get("builds"):
                 progress.step("Fortinet REST endpoints for the AI, from SATOM's API library: "
                               + ", ".join("%s %s (%d)" % (p, b["api_version"], b["endpoints"])
