@@ -6,7 +6,7 @@ import { h, clear, field, input, textarea, select, checkbox, button, badge, empt
 import * as M from "./model.js";
 import { clone, deepEqual } from "./util.js";
 import { resolveTarget, tabsFor } from "./where.js";
-import { computeChoices } from "./choices.js";
+import { computeChoices, libraryPins, hasLibraryOps, setLibraryOps } from "./choices.js";
 import { installAdom, badgeOf, adomLabel, GLOBAL } from "./adom.js";
 import { renderActivity, liveLine } from "./activity.js";
 import * as F from "./fields.js";
@@ -84,6 +84,24 @@ function boot() {
       libPromise.catch(() => { libPromise = null; });
     }
     return libPromise;
+  };
+  /* The endpoint lists of the draft's connections pinned to SATOM's API
+     library (contract section 19): loaded once each, so a Call an API step
+     can pick an endpoint. A build SATOM cannot serve keeps an empty list
+     (type the method and the path; the check names a wrong one). */
+  const libLoading = new Set();
+  ctx.loadLibraryCatalogs = () => {
+    const tid = ctx.project.target_id || (ctx.target && ctx.target.id);
+    if (!tid || ctx.kind !== "app") return;
+    libraryPins(M.appBody(ctx.project)).forEach(({ product, version }) => {
+      const key = `${product}@${version}`;
+      if (hasLibraryOps(key) || libLoading.has(key)) return;
+      libLoading.add(key);
+      ctx.api.libraryCatalog(tid, product, version)
+        .then((j) => setLibraryOps(key, (j && j.api && j.api.operations) || []))
+        .catch(() => setLibraryOps(key, []))
+        .finally(() => { libLoading.delete(key); keepFocus(() => renderActive()); });
+    });
   };
   /* Where the project installs: computed here from the library the moment a
      dataset is ticked; the server's own answer (every save) when there is no
@@ -180,6 +198,7 @@ function boot() {
     const t = TABS[ctx.active];
     const panel = $(`panel-${ctx.active}`);
     if (!t || !panel) return;
+    ctx.loadLibraryCatalogs();
     if (!ctx.schema && ctx.schemaState === "loading" && ctx.active !== "raw" && ctx.active !== "files") {
       clear(panel).appendChild(empty("Loading the target schema…"));
       return;

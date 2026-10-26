@@ -59,6 +59,7 @@ export class Api {
   }
   schema(targetId) { return this.req("GET", `/api/targets/${targetId}/schema`); }
   library(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/library${refresh ? "?refresh=1" : ""}`); }
+  libraryCatalog(targetId, product, version) { return this.req("GET", `/api/targets/${targetId}/library/fortinet/${encodeURIComponent(product)}/${encodeURIComponent(version)}/catalog`); }
   snapshot(targetId, refresh) { return this.req("GET", `/api/targets/${targetId}/snapshot${refresh ? "?refresh=1" : ""}`); }
   aiProfiles() { return this.req("GET", "/api/ai/profiles"); }
   generatePreview(id, profileId, prompt, thread) { return this.req("POST", `/api/projects/${id}/generate/preview`, { profile_id: profileId, prompt, thread: thread || undefined }); }

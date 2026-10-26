@@ -10,6 +10,7 @@ the target's data, never a secret.
 | ``GET /library`` | the page |
 | ``GET /api/targets/<id>/library`` | ``satom.builder-library/1`` (``?refresh=1`` refetches) |
 | ``GET /api/targets/<id>/library/fortinet/<product>/<version>`` | a build's endpoints (``?endpoint=`` that endpoint's fields) |
+| ``GET /api/targets/<id>/library/fortinet/<product>/<version>/catalog`` | that build as an API Catalog version (contract section 19) |
 | ``GET /api/targets/<id>/guide`` | ``{"guide", "sdk_doc", "schema"}`` from the rules pack and snapshot |
 """
 from __future__ import annotations
@@ -72,6 +73,21 @@ def library_build(tid, product, version):
                        request.args.get("refresh") == "1")
     except SatomError as exc:
         return api_error(exc.code, exc.message, exc.status)
+
+
+@bp.get("/api/targets/<int:tid>/library/fortinet/<product>/<version>/catalog")
+@login_required
+def library_catalog(tid, product, version):
+    """One build as the API Catalog version a pinned connection calls
+    (contract section 19): the editor's endpoint picker."""
+    t, err = _target(tid)
+    if err:
+        return err
+    try:
+        api = targets.library_catalog(db.get(), t, g.user.id, product, version)
+    except SatomError as exc:
+        return api_error(exc.code, exc.message, exc.status)
+    return {"api": {k: api.get(k) for k in ("slug", "version", "name", "notes", "operations")}}
 
 
 @bp.get("/api/targets/<int:tid>/guide")

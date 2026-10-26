@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, g
 
-from .. import db, projects, rules, runtime, targets, testdata
+from .. import db, fortinet_apis, projects, rules, runtime, targets, testdata
 from ..satom_client import SatomError
 from ..security import api_error, audit, login_required
 from ..targets import NotReady
@@ -42,6 +42,16 @@ def _pack_for(conn, row):
     except runtime.RuntimeUnavailable as exc:
         return snap, None, exc.message
     return snap, pack, None
+
+
+def _with_library(conn, row, proj: dict) -> tuple[dict, list]:
+    """The project with SATOM's endpoint list for every connection pinned to
+    the API library (contract section 19): what the runtime and the test
+    answers see. -> (project, problems)."""
+    if proj.get("kind") != "app" or not fortinet_apis.pins(proj):
+        return proj, []
+    t = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
+    return targets.library_completion(conn, t, g.user.id)(proj)
 
 
 def _graph_steps(project: dict) -> list[dict]:
@@ -159,7 +169,9 @@ def testdata_generate(pid):
         return api_error("bad_request", "seed and rows are numbers.", 400)
     only = body.get("only") if isinstance(body.get("only"), list) else None
     current, _ = runtime.load_testdata(conn, pid)
-    proj = projects.to_api(conn, row)
+    # a pinned connection's test answers follow SATOM's endpoints; a pin SATOM
+    # cannot serve keeps the generic answers (the test run then says why)
+    proj, _pins = _with_library(conn, row, projects.to_api(conn, row))
     try:
         defs, builtin = _defs(conn, row, pack)
         data = testdata.generate(proj, snap, {k: d.get("columns") or [] for k, d in defs.items()},
@@ -307,6 +319,9 @@ def test_run_start(pid):
     if pack is None:
         return api_error("no_runtime", why or "No test runtime for this project's target.", 409)
     test, _ = runtime.load_testdata(conn, pid)
+    proj, pin_problems = _with_library(conn, row, proj)
+    if pin_problems:
+        return api_error("library_pin", "; ".join(p["message"] for p in pin_problems), 409)
     cols = {}
     if kind == "view":
         try:

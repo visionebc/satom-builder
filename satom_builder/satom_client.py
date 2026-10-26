@@ -296,6 +296,28 @@ class SatomClient:
             raise SatomError("SATOM's library answer is not an object.", "satom_bad_answer", 502)
         return j
 
+    def library_catalog(self, product: str, version: str) -> dict:
+        """One API library build as an API Catalog version, exactly as an app
+        package carries it in ``"apis"`` (contract section 19)."""
+        if not _LIB_PART.match(product or "") or not _LIB_PART.match(version or ""):
+            raise SatomError("Malformed product or version.", "bad_request", 400)
+        route = "/library/fortinet/%s/%s/catalog" % (quote(product, safe=""),
+                                                      quote(version, safe=""))
+        try:
+            j = self._library_call(route)
+        except SatomError as exc:
+            if exc.code == "satom_not_found":
+                raise SatomError(f"{self.host} runs a SATOM that cannot serve its API library "
+                                 "as API Catalog versions: it needs SATOM 4.5.0 or later.",
+                                 "no_library_catalog", 409) from None
+            raise
+        api = j.get("api") if isinstance(j, dict) else None
+        if not isinstance(api, dict) or api.get("slug") != product or \
+                str(api.get("version")) != version or not isinstance(api.get("operations"), list):
+            raise SatomError("SATOM's API library catalog has an unknown format.",
+                             "satom_bad_answer", 502)
+        return api
+
     # -- contract section 15: this server's rows for the test data ---------
     def data(self, datasets: list | None = None, stores: list | None = None,
              limit: int = 200) -> dict:

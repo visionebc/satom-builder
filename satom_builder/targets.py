@@ -163,6 +163,44 @@ def library(conn, target_row, user_id: int, refresh: bool = False) -> dict:
         return {}
 
 
+def library_catalog(conn, target_row, user_id: int, product: str, version: str) -> dict:
+    """One API library build as an API Catalog version (contract section 19),
+    cached like the library. Raises SatomError (not measured, older SATOM)."""
+    return cached_library(conn, target_row, user_id, "catalog:%s:%s" % (product, version),
+                          lambda c: c.library_catalog(product, version))
+
+
+def catalog_resolver(conn, target_row, user_id: int):
+    """``resolve(product, build)`` -> SATOM's catalog entry, over *conn* (a
+    job thread passes its own connection)."""
+    def resolve(product: str, build: str) -> dict:
+        return library_catalog(conn, target_row, user_id, product, build)
+    return resolve
+
+
+def library_completion(conn, target_row, user_id: int):
+    """``complete(project)`` -> ``(project, problems)``: the project with
+    SATOM's endpoint list for every connection pinned to the API library
+    (contract section 19). Without a target, a pin is a named problem."""
+    from . import fortinet_apis as FA
+    if target_row is None:
+        def none(product, build):
+            raise FA.PinError("the project has no SATOM connection")
+        return lambda project: FA.complete(project, none)
+    resolve = catalog_resolver(conn, target_row, user_id)
+    return lambda project: FA.complete(project, resolve)
+
+
+def library_prompt(conn, target_row, user_id: int, project: dict, text: str):
+    """The Fortinet endpoint index an app's prompt carries, or None."""
+    from . import fortinet_apis as FA
+    if target_row is None or project.get("kind") != "app":
+        return None
+    builds = FA.library_builds(library(conn, target_row, user_id))
+    return FA.prompt_for(FA.plan(text, project, builds), builds,
+                         catalog_resolver(conn, target_row, user_id))
+
+
 def dataset_defs(conn, target_row, user_id: int) -> dict:
     """``{key: dataset}`` of the target's library (every source: built-in,
     administrator, device objects, contract sections 14 and 16); ``{}`` when

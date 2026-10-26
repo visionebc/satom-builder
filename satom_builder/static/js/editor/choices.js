@@ -45,11 +45,17 @@ export function computeChoices(schema, app, snapshot) {
       return e ? (e.columns || []).map((c) => c.name) : null;
     },
     /* Endpoints a connection may call: the API Catalog version it is pinned
-     * to, in the package or on the target. null = not pinned. */
+     * to, in the package or on the target, or a build of SATOM's API library
+     * (contract section 19: SATOM's list, loaded by the editor). null = not
+     * pinned. */
     catalog(conn) {
       const c = (app.connections || []).find((x) => x.slug === conn);
       if (c) {
         if (!c.api) return null;
+        if (LIBRARY_PRODUCTS[c.api]) {
+          const key = `${c.api}@${c.api_version || ""}`;
+          return { api: c.api, version: c.api_version, ops: libraryOps.get(key) || [], library: true, loading: !libraryOps.has(key) };
+        }
         const api = (app.apis || []).find((a) => a.slug === c.api && String(a.version) === String(c.api_version));
         if (api) return { api: api.slug, version: api.version, ops: api.operations || [] };
         const srv = serverCatalog(schema)[conn];
@@ -58,6 +64,18 @@ export function computeChoices(schema, app, snapshot) {
       return serverCatalog(schema)[conn] || null;
     },
   };
+}
+
+/* SATOM's API library (contract section 19): the products a connection pins
+ * to a firmware build, and the endpoint lists the editor loaded for them. */
+export const LIBRARY_PRODUCTS = { fortigate: "FortiGate", fortiweb: "FortiWeb", fortiadc: "FortiADC", fortiauthenticator: "FortiAuthenticator" };
+const libraryOps = new Map();
+export function setLibraryOps(key, ops) { libraryOps.set(key, Array.isArray(ops) ? ops : []); }
+export function hasLibraryOps(key) { return libraryOps.has(key); }
+/* [{product, version}] of the draft's connections pinned to the library. */
+export function libraryPins(app) {
+  return ((app && app.connections) || []).filter((c) => c && LIBRARY_PRODUCTS[c.api] && c.api_version)
+    .map((c) => ({ product: c.api, version: String(c.api_version) }));
 }
 
 function serverCatalog(schema) {

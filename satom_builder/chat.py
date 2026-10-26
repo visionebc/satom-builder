@@ -159,9 +159,12 @@ def conversation_text(history: list, new_text: str, text_files: list) -> str:
 # --------------------------------------------------------------------------
 def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, adapter,
                 pack, snap: dict, project: dict, assets: list, max_rounds: int,
-                profile_label: str, test_schema: str = "", render_check=None) -> dict:
+                profile_label: str, test_schema: str = "", render_check=None,
+                target=None) -> dict:
     """Store the author's message and a running reply, then write the reply
-    in a thread. -> {"user": id, "reply": id}."""
+    in a thread. -> {"user": id, "reply": id}. *target* (the project's
+    SATOM connection row) lets an app's reply use SATOM's API library
+    (contract section 19)."""
     with db.session(app.config["DB_PATH"]) as conn:
         history = conn.execute("SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY id",
                                (chat_id,)).fetchall()
@@ -189,7 +192,8 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
     images = [{"mime": f["mime"], "data": bytes(f["data"])} for f in files if f["kind"] == "image"]
 
     def work():
-        with db.session(app.config["DB_PATH"]) as conn:
+        # app context: SATOM's API library is read through the target cache
+        with app.app_context(), db.session(app.config["DB_PATH"]) as conn:
             def on_round(rounds):
                 conn.execute("UPDATE chat_messages SET rounds = ?, updated_at = ? WHERE id = ?",
                              (db.dumps(rounds), db.now(), mr))
@@ -198,11 +202,17 @@ def start_reply(app, *, chat_id: int, user_id: int, text: str, file_ids: list, a
                 pg.step(f"Attached: {len(text_files)} text file(s) in the prompt, "
                         f"{len(images)} image(s) sent as images", "ok")
             try:
+                library = complete = None
+                if project.get("kind") == "app" and target is not None:
+                    from . import targets
+                    library = targets.library_prompt(conn, target, user_id, project, text)
+                    complete = targets.library_completion(conn, target, user_id)
                 res = ai_loop.run(adapter, pack, snap, project, author_text, assets,
                                   max_rounds=max_rounds, on_round=on_round,
                                   min_satom=str(snap.get("satom_version") or ""), chat=True,
                                   images=images or None, progress=pg,
-                                  render_check=render_check)
+                                  render_check=render_check, library=library,
+                                  complete=complete)
                 draft = res.get("project")
                 note = res.get("message") or ""
                 if not note:

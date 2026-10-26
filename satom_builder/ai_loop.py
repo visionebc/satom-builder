@@ -23,7 +23,7 @@ import threading
 import traceback
 import uuid
 
-from . import db, package, projects
+from . import db, fortinet_apis, package, projects
 from .ai_adapters import AIError
 from .secrets_store import redact
 
@@ -227,12 +227,14 @@ COMMON_STEP_PARAMS = ("doc", "role", "time")
 
 
 def compact_step_kinds(kinds) -> dict:
-    """An app prompt's step kinds: the summary, whether it writes and each
-    parameter's help -- the names, types, choices and defaults are already in
-    the author guide (system prompt). The full list was 47k characters (about
-    12k tokens) of a ~27k-token prompt: with a 32k-context model the repair
-    round had no room left to answer (lab, 2026-10-26: "The output was too
-    long" in round 2 of the FortiWeb -> FortiGate request)."""
+    """An app prompt's step kinds: only each parameter's help, where there is
+    one -- the key, label, summary, whether it writes and each parameter's
+    name, type, choices and default are already in the author guide (system
+    prompt, "### Diagram"). The full list was 47k characters (about 12k
+    tokens) of a ~27k-token prompt: with a 32k-context model the repair round
+    had no room left to answer (lab, 2026-10-26: "The output was too long" in
+    round 2 of the FortiWeb -> FortiGate request); the summaries and flags
+    repeated the guide for another 5k."""
     out = {}
     for k in kinds or []:
         if not isinstance(k, dict) or not k.get("key"):
@@ -241,12 +243,27 @@ def compact_step_kinds(kinds) -> dict:
         for p in k.get("params") or []:
             if not isinstance(p, dict) or p.get("name") in COMMON_STEP_PARAMS:
                 continue
-            params[str(p.get("name"))] = str(p.get("help") or "")
-        e = {"summary": str(k.get("summary") or ""), "params": params}
-        if k.get("writes"):
-            e["writes"] = True
-        out[str(k["key"])] = e
+            if str(p.get("help") or "").strip():
+                params[str(p.get("name"))] = str(p["help"])
+        if params:
+            out[str(k["key"])] = params
     return out
+
+
+#: the author guide's sections a project of one kind never needs: an app's
+#: prompt does not carry the views' dataset lists (22k characters on a1) and
+#: a view's does not carry the app.json reference
+GUIDE_SKIP = {"app": ("## Views and widgets",),
+              "view": ("## Apps (app.json)",), "widget": ("## Apps (app.json)",)}
+
+
+def guide_for(guide: str, kind: str) -> str:
+    """The author guide without the ``##`` sections another kind needs."""
+    skip = GUIDE_SKIP.get(kind or "", ())
+    if not skip:
+        return guide
+    parts = re.split(r"(?m)^(?=## )", guide)
+    return "".join(x for x in parts if not x.startswith(skip))
 
 
 def target_summary(snapshot: dict, kind: str = "app") -> dict:
@@ -298,9 +315,11 @@ def _app_schema(schema: dict) -> dict:
     out = {k: v for k, v in schema.items() if k != "datasets"}
     if "step_kinds" in out:
         out["step_kinds"] = compact_step_kinds(out["step_kinds"])
-        out["step_kinds_note"] = ("parameter help per step; names, types, choices and "
-                                  "defaults are in the author guide. Every step also takes "
-                                  "doc, role and time (procedure text, never read by the run).")
+        out["step_kinds_note"] = ("the help of a step's parameters, where it has one; every "
+                                  "step kind, its parameters, their types, choices and "
+                                  "defaults are in the author guide (### Diagram). Every step "
+                                  "also takes doc, role and time (procedure text, never read "
+                                  "by the run).")
     return out
 
 
@@ -328,16 +347,24 @@ def draft_for_prompt(project: dict) -> dict:
 
 
 def build_prompt(author_guide: str, snapshot: dict, project: dict, author_text: str,
-                 feedback: str = "", chat: bool = False, request: str = "") -> tuple[str, str]:
+                 feedback: str = "", chat: bool = False, request: str = "",
+                 library: dict | None = None) -> tuple[str, str]:
     """*request* is the author's own new message (*author_text* may wrap it
     in the conversation so far): a repair round repeats it after the
-    problems, so the last thing the model reads is what to build."""
-    system = (author_guide.rstrip() + "\n\n" + OUTPUT_CONTRACT + "\n"
+    problems, so the last thing the model reads is what to build. *library*
+    (an app's: :func:`fortinet_apis.prompt_section`) is the Fortinet REST
+    endpoints the request may call (contract section 19)."""
+    kind = str(project.get("kind") or "app")
+    system = (guide_for(author_guide, kind).rstrip() + "\n\n" + OUTPUT_CONTRACT + "\n"
               + (CHAT_CONTRACT if chat else GENERATE_CONTRACT))
     compact = {"sort_keys": True, "ensure_ascii": False, "separators": (",", ":")}
+    lib = ""
+    if library and kind == "app":
+        lib = ("# SATOM's API library (the Fortinet REST endpoints a pinned connection may "
+               "call)\n\n```json\n" + json.dumps(library, **compact) + "\n```\n\n")
     user = ("# Target SATOM (names and shapes only)\n\n```json\n"
-            + json.dumps(target_summary(snapshot, str(project.get("kind") or "app")), **compact)
-            + "\n```\n\n# Current draft (" + str(project.get("kind")) + ")\n\n```json\n"
+            + json.dumps(target_summary(snapshot, kind), **compact)
+            + "\n```\n\n" + lib + "# Current draft (" + str(project.get("kind")) + ")\n\n```json\n"
             + json.dumps(draft_for_prompt(project), **compact)
             + "\n```\n\n# What the author wants\n\n" + author_text.strip() + "\n")
     if feedback:
@@ -414,14 +441,19 @@ def problems_text(result: dict) -> str:
 def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: list,
         max_rounds: int = DEFAULT_MAX_ROUNDS, on_round=None, min_satom: str = "",
         chat: bool = False, images: list | None = None, progress=None,
-        request: str = "", render_check=None) -> dict:
+        request: str = "", render_check=None, library: dict | None = None,
+        complete=None) -> dict:
     """-> {"ok", "rounds": [...], "project": candidate, "check": last result,
     "message": the model's note}. Raises AIError (provider) and RulesError
     (pack). The model may answer with a message alone: nothing is checked and
     the draft is unchanged. *request* is the author's own new message
     (Generate): the first step of the activity, and repeated in repair
     rounds. *progress* (a :class:`progress.Progress`) records every step and
-    streams the model's thinking and answer as they arrive."""
+    streams the model's thinking and answer as they arrive. *library* is the
+    Fortinet endpoint index the prompt carries; *complete(project)* ->
+    ``(project, problems)`` adds SATOM's endpoint list of every connection
+    pinned to the API library before the package is built and checked
+    (:func:`fortinet_apis.complete`)."""
     pg = progress
     if pg and request.strip():
         pg.step("Your request", "ok", detail=request.strip())
@@ -438,7 +470,7 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
     message = ""
     for n in range(1, max_rounds + 1):
         system, user = build_prompt(guide, snapshot, current, author_text, feedback, chat=chat,
-                                    request=request)
+                                    request=request, library=library)
         kw = {"images": images} if images else {}
         if pg:
             size = len(system.encode("utf-8")) + len(user.encode("utf-8"))
@@ -487,15 +519,29 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
             feedback = (f"- answer: {msg}\nReturn ONE JSON object with the keys of the "
                         "output contract and nothing else.")
             continue
+        # validate_patch already dropped any endpoint list of SATOM's API
+        # library the model wrote: the pin is the model's, the list SATOM's
         candidate = merge(current, shaped)
         if pg:
             pg.step("Building the package and checking it with SATOM's rules")
+        pin_problems = []
+        built = candidate
+        if complete is not None:
+            built, pin_problems = complete(candidate)
+            if pg and fortinet_apis.pins(candidate):
+                pg.step("Added SATOM's endpoint list for " + ", ".join(
+                    "%s %s" % (p, b) for _c, p, b in fortinet_apis.pins(candidate)), "ok")
         try:
-            _, data = package.build_from_project(candidate, assets, min_satom=min_satom)
+            _, data = package.build_from_project(built, assets, min_satom=min_satom)
             last = pack.check(data, snapshot, "builder")
         except package.PackageError as exc:
             last = {"ok": False, "problems": [{"where": "package", "message": str(exc)}],
                     "warnings": []}
+        if pin_problems:
+            last = dict(last, ok=False,
+                        problems=list(last.get("problems") or []) + pin_problems)
+        if not last.get("ok"):
+            last = dict(last, problems=fortinet_apis.hints(last.get("problems") or [], built))
         if last.get("ok") and render_check is not None:
             # SATOM's rules parse a template, they do not run it: render it
             # (render_check.py) before calling the draft done

@@ -147,6 +147,16 @@ In SATOM each automation becomes an entry of **Automations** ("Run a Plugin Stud
 
 To act on SATOM's devices, start the diagram with **Read SATOM's appliances** (the devices with `name`, `kind`, `host`, `ip`…, filtered by product, e.g. every FortiWeb); in a test run it reads the test data's `fleet_appliances`. A target whose SATOM does not know automations yet says so on the tab.
 
+### 4.3.2 Calling a Fortinet device: SATOM's API library
+
+A connection that talks to a FortiGate, FortiWeb, FortiADC or FortiAuthenticator is pinned (**Connections** tab › *API Catalog version*) to a firmware build of **SATOM's API library** — "FortiGate 8.0.1 — SATOM's API library (in the fleet)"; the builds your fleet runs come first. From then on:
+
+- the package carries **SATOM's** list of that build's endpoints (about 3,700 for a FortiGate), added by the Builder when it builds the package — the draft keeps only the pin, and a list typed into the draft (or written by the AI) is dropped;
+- a **Call an API** step searches those endpoints ("METHOD path": type *addrgrp member*) and sets the method and the path;
+- SATOM's rules refuse a step whose method and path are not one of them — in the check, in a test run and on import — and the problem names the nearest real endpoints.
+
+FortiGate tables are `/api/v2/cmdb/<path>` and `<path>/{<key>}`; a list inside an entry has its own endpoint: `POST /api/v2/cmdb/firewall/addrgrp/{name}/member` with `{"name": "<address>"}` adds one address to a group and keeps the others, where a `PUT` of the group replaces the whole list. FortiAnalyzer is not offered (JSON-RPC). Needs a SATOM that serves its API library as catalog versions; an older one says so on the pin.
+
 ### 4.4 From the Builder to production
 
 1. Build and test here: **Check** (the rules pack), then **Test run** on your test data until it does what you want.

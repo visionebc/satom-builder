@@ -89,6 +89,11 @@ def _build(conn, row, snap: dict | None = None) -> tuple[str, bytes]:
         if t is not None and targets.has_token(conn, g.user.id, t["id"]):
             defs = package.dataset_defs_from(proj.get("datasets"),
                                              targets.dataset_defs(conn, t, g.user.id))
+    if proj.get("kind") == "app":
+        t = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
+        proj, pin_problems = targets.library_completion(conn, t, g.user.id)(proj)
+        if pin_problems:
+            raise package.PackageError("; ".join(p["message"] for p in pin_problems))
     return package.build_from_project(proj, projects.asset_blobs(conn, row["id"]),
                                       private_key=_private_key(), min_satom=min_satom,
                                       dataset_defs=defs)
@@ -454,7 +459,9 @@ def generate_preview(pid):
     if err:
         return err
     proj = projects.to_api(db.get(), row)
-    system, user = ai_loop.build_prompt(guide, snap, proj, author_text, request=prompt)
+    library = targets.library_prompt(db.get(), t, g.user.id, proj, author_text)
+    system, user = ai_loop.build_prompt(guide, snap, proj, author_text, request=prompt,
+                                        library=library)
     return {"system": system, "user": user,
             "bytes": len(system.encode("utf-8")) + len(user.encode("utf-8")),
             "sends": ["author guide", "schema", "draft", "your text"],
@@ -496,10 +503,21 @@ def generate(pid):
     rcheck = render_check.make(pack, snap, targets.dataset_defs(conn, t, g.user.id)) \
         if proj.get("kind") in ("view", "widget") else None
 
+    uid = g.user.id
+
     def work(job_id, jconn, update, progress):
+        library = complete = None
+        if proj.get("kind") == "app":
+            library = targets.library_prompt(jconn, t, uid, proj, author_text)
+            if library and library.get("builds"):
+                progress.step("Fortinet REST endpoints for the AI, from SATOM's API library: "
+                              + ", ".join("%s %s (%d)" % (p, b["api_version"], b["endpoints"])
+                                          for p, b in library["builds"].items()), "ok")
+            complete = targets.library_completion(jconn, t, uid)
         return ai_loop.run(adapter, pack, snap, proj, author_text, assets,
                            max_rounds=max_rounds, on_round=update, min_satom=min_satom,
-                           progress=progress, request=prompt, render_check=rcheck)
+                           progress=progress, request=prompt, render_check=rcheck,
+                           library=library, complete=complete)
 
     job_id = ai_loop.start_job(current_app._get_current_object(), project_id=pid,
                                user_id=g.user.id, work=work,

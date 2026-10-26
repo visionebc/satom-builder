@@ -58,6 +58,7 @@ export function paramForm(params, values, o) {
 
 function operationPicker(p, values, opts, id, set, issues) {
   const cat = opts.choices.catalog(values.connection);
+  if (cat && cat.library) return libraryPicker(p, values, opts, id, set, issues, cat);
   const ops = (cat && cat.ops) || [];
   const cur = values.operation || "";
   const list = ops.map((op) => ({ value: op.id, label: `${op.method} ${op.path} — ${op.id}${op.summary ? " (" + op.summary + ")" : ""}` }));
@@ -72,4 +73,29 @@ function operationPicker(p, values, opts, id, set, issues) {
     ? `API ${cat.api} ${cat.version}: the method and the path come from the endpoint.`
     : "The connection is not pinned to an API Catalog version: type the method and the path.";
   return field(p.label || p.name, s, { help, issues });
+}
+
+/* A connection pinned to a build of SATOM's API library (contract section
+ * 19): thousands of endpoints, so a search box over "METHOD path" instead of
+ * a select. Picking one sets the endpoint, the method and the path. */
+function libraryPicker(p, values, opts, id, set, issues, cat) {
+  const ops = cat.ops || [];
+  const label = (op) => `${op.method} ${op.path}`;
+  const cur = ops.find((x) => x.id === values.operation);
+  const box = h("input", { id, type: "search", class: "form-control form-control-sm ed-mono", list: `${id}-list`, value: cur ? label(cur) : "", placeholder: cat.loading ? "Loading SATOM's endpoint list…" : "Type to search, e.g. addrgrp member", disabled: !!cat.loading, autocomplete: "off" });
+  const dl = h("datalist", { id: `${id}-list` });
+  ops.forEach((op) => dl.appendChild(h("option", { value: label(op) }, op.summary || "")));
+  box.addEventListener("change", () => {
+    const op = ops.find((x) => label(x) === box.value.trim());
+    if (!op) { if (!box.value.trim()) { set("operation", ""); if (opts.rerender) opts.rerender(); } return; }
+    set("operation", op.id);
+    values.method = op.method; values.path = op.path;
+    if (opts.rerender) opts.rerender();
+  });
+  const n = ops.length;
+  const help = cat.loading
+    ? `SATOM's API library, ${cat.api} ${cat.version}: loading its endpoints.`
+    : n ? `SATOM's API library, ${cat.api} ${cat.version}: ${n} endpoints. Pick one, or type the method and the path below — the check refuses a path that is not one of them.`
+      : `SATOM did not serve the endpoints of ${cat.api} ${cat.version}: type the method and the path; the check names a wrong one.`;
+  return field(p.label || p.name, h("div", {}, box, dl), { help, issues });
 }

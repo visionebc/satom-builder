@@ -152,7 +152,10 @@ def validate_patch(body, conn=None) -> dict:
             raise ShapeError("app is larger than 2 MB.")
         if _depth(v) > MAX_DEPTH:
             raise ShapeError("app is nested too deeply.")
-        out["app"] = v
+        # an API library build's endpoint list is SATOM's, never the draft's
+        # (contract section 19): the draft keeps the connection's pin only
+        from . import fortinet_apis
+        out["app"] = fortinet_apis.strip({"app": v})["app"]
     return out
 
 

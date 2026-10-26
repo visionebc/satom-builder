@@ -7,6 +7,30 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Added
 
+- **The AI calls a Fortinet device with SATOM's real endpoints, and a wrong
+  path is refused.** Requested: "the API pack should go to the Builder, so it
+  has every API and knows how to work with them" -- the FortiWeb -> FortiGate
+  app came back calling `POST /api/firewall/policy/070024/objects`, which no
+  FortiGate serves. The API pack is not copied (the client's SATOM, where the
+  plugin installs, has the library that counts): a connection is pinned to a
+  build of SATOM's API library (`"api": "fortigate", "api_version": "8.0.1"`)
+  and the Builder adds SATOM's endpoint list for that build to the package
+  (contract section 19), so SATOM's own rules refuse an `api_call` whose path
+  is not one of its ~3,700 endpoints -- in the check, in a test run and on
+  import -- and the problem names the nearest real endpoints. The AI reads
+  the build's endpoints for the products the request names (tables with
+  their key, lists such as an address group's `member` as their own
+  endpoint), and SATOM's author guide says how FortiGate is written to (a
+  PUT of a list replaces it; POST one item to `.../addrgrp/{name}/member`).
+  The draft never keeps the list: an AI answer or a save that carries one
+  loses it. In the editor the connection offers the library's builds (the
+  fleet's first) and **Call an API** searches the build's endpoints. Needs
+  the SATOM of the same round.
+- **Room for the answer.** An app's prompt no longer carries the views'
+  section of SATOM's author guide (22k characters of dataset lists on a1)
+  nor the step kinds a second time: 80 KB -> about 52 KB before the endpoint
+  index, so a 32k-token model still has room to answer and repair.
+
 - **Automations: an app on a schedule.** Requested: "every time a FortiWeb
   is added to SATOM, send a rule to the FortiGate that adds its IP to a
   specific group" -- the AI answered "make it a view", which can neither run

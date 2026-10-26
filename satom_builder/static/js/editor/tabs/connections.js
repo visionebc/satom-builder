@@ -6,6 +6,7 @@
 import { h, clear, field, input, select, checkbox, button, badge, card, empty, flash } from "../ui.js";
 import { ensure, appBody, list } from "../model.js";
 import { uniqueName, pattern } from "../util.js";
+import { LIBRARY_PRODUCTS } from "../choices.js";
 
 const SECRET_KEYS = ["password", "secret", "token", "api_key", "client_secret"];
 const AUTH_LABELS = { none: "None", basic: "Basic (user + password)", bearer: "Bearer token", api_key: "API key in a header", oauth2: "OAuth2 client credentials", session: "Session login (user + password)" };
@@ -75,7 +76,20 @@ function connCard(ctx, c, i, conns) {
   ((ctx.snapshot && ctx.snapshot.existing && ctx.snapshot.existing.api_versions) || []).forEach(([s, v, st]) => {
     if (!apiOpts.some((o) => o.value === `${s}@${v}`)) apiOpts.push({ value: `${s}@${v}`, label: `${s} ${v} (target, ${st})` });
   });
+  // SATOM's API library (contract section 19): a Fortinet firmware build,
+  // its endpoint list served by SATOM; the fleet's builds first.
+  const lib = (ctx.lib && ctx.lib.fortinet && ctx.lib.fortinet.products) || null;
+  if (!ctx.lib && ctx.library) ctx.library().then((j) => { if (j && ctx.active === "connections") ctx.changed({ rerender: true }); }).catch(() => {});
+  Object.keys(LIBRARY_PRODUCTS).forEach((p) => {
+    const rows = ((lib && lib[p]) || []).filter((b) => b && b.measured);
+    rows.sort((a, b) => (Number(!!b.in_fleet) - Number(!!a.in_fleet)) || String(b.version).localeCompare(String(a.version), undefined, { numeric: true }));
+    rows.forEach((b) => {
+      const value = `${p}@${b.version}`;
+      if (!apiOpts.some((o) => o.value === value)) apiOpts.push({ value, label: `${LIBRARY_PRODUCTS[p]} ${b.version} — SATOM's API library${b.in_fleet ? " (in the fleet)" : ""}` });
+    });
+  });
   const cur = c.api ? `${c.api}@${c.api_version || ""}` : "";
+  if (cur && !apiOpts.some((o) => o.value === cur)) apiOpts.push({ value: cur, label: `${c.api} ${c.api_version || ""}` });
   const apiSel = select(apiOpts, cur, { id: `${pre}-api` }, "— not pinned —");
   apiSel.addEventListener("change", () => {
     if (!apiSel.value) { delete c.api; delete c.api_version; } else { const [a, v] = apiSel.value.split("@"); c.api = a; c.api_version = v; }
@@ -100,6 +114,8 @@ function connCard(ctx, c, i, conns) {
     h("div", { class: "ed-grid ed-grid-3" }, txt("slug", "Slug", { required: true, rerender: true, attrs: { class: "form-control form-control-sm ed-mono" } }), txt("name", "Name"), txt("description", "Description")),
     h("div", { class: "ed-grid ed-grid-3" }, txt("base_url", "Base URL", { required: true, cls: "ed-span-2", help: "https://host/prefix: steps add paths under it." }), field("Timeout (s)", to, { help: `1 to ${maxT}` })),
     h("div", { class: "ed-grid ed-grid-3" }, field("Authentication", authSel), authFields, h("div", { class: "ed-field ed-field-end" }, tls)),
-    h("div", { class: "ed-grid ed-grid-2" }, field("API Catalog version", apiSel, { help: "A pinned connection calls only the endpoints of that version (Call an API picks them by id)." })),
+    h("div", { class: "ed-grid ed-grid-2" }, field("API Catalog version", apiSel, { help: LIBRARY_PRODUCTS[c.api]
+      ? `SATOM's API library: every endpoint ${LIBRARY_PRODUCTS[c.api]} ${c.api_version} serves, as SATOM lists it. The Builder adds that list to the package; a Call an API step must use one of them.`
+      : "A pinned connection calls only the endpoints of that version (Call an API picks them by id). A Fortinet device: pin it to a build of SATOM's API library." })),
     h("div", { class: "ed-item-foot" }, rm));
 }
