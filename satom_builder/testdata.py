@@ -290,9 +290,12 @@ def _used_ops(project: dict, conn: dict, ops: list[dict]) -> list[dict]:
 
 
 #: test answers of a connection pinned to SATOM's API library come in the
-#: product's own envelope (FortiGate measured on fgt02 8.0.1; the others as
-#: SATOM's device clients read them): an app written against the real device
-#: (``resp.results``) must not fail on a bare list (lab, 2026-10-26)
+#: product's own envelope: an app written against the real device
+#: (``resp.results``) must not fail on a bare list (lab, 2026-10-26). Reads
+#: measured with GETs on 2026-10-26: fgt02 8.0.1, fortiweb19 8.0.6
+#: (``results``), fortiadc11 8.0.4 (``payload``), fac01 8.0.3 (``objects`` +
+#: ``meta``), faz02 7.6.7 (JSON-RPC ``result[0]`` with ``status``/``data``,
+#: HTTP 200 for every call). Writes are SATOM's device clients' reading.
 _ROW = {"name": "item-1", "q_origin_key": "item-1"}
 
 
@@ -314,6 +317,10 @@ def library_answer(product: str, method: str) -> dict:
         return ({"meta": {"limit": 20, "next": None, "offset": 0, "previous": None,
                           "total_count": 1}, "objects": [{"id": 1, "name": "item-1"}]}
                 if read else {"id": 1, "name": "item-1"})
+    if product == "fortianalyzer":
+        # every call is POST /jsonrpc: the answer carries data either way
+        return {"id": 1, "result": [{"status": {"code": 0, "message": "OK"}, "url": "test",
+                                     "data": [{"name": "item-1"}]}]}
     return [{"id": 1, "name": "item-1"}] if read else {"ok": True}
 
 

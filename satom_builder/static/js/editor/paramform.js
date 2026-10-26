@@ -5,7 +5,7 @@
  * "operation" param is an endpoint picker over the connection's API Catalog
  * version. Values are written only when the author edits them. */
 import { h, field, input, textarea, select, uid } from "./ui.js";
-import { selectChoices } from "./choices.js";
+import { selectChoices, rpcEndpoint, rpcBody } from "./choices.js";
 import { jsonText, jsonProblem } from "./util.js";
 
 export function paramForm(params, values, o) {
@@ -80,6 +80,8 @@ function operationPicker(p, values, opts, id, set, issues) {
  * a select. Picking one sets the endpoint, the method and the path. */
 function libraryPicker(p, values, opts, id, set, issues, cat) {
   const ops = cat.ops || [];
+  const rpc = rpcEndpoint(ops);
+  if (rpc) return rpcPicker(p, values, opts, id, set, issues, cat, rpc);
   const label = (op) => `${op.method} ${op.path}`;
   const cur = ops.find((x) => x.id === values.operation);
   const box = h("input", { id, type: "search", class: "form-control form-control-sm ed-mono", list: `${id}-list`, value: cur ? label(cur) : "", placeholder: cat.loading ? "Loading SATOM's endpoint list…" : "Type to search, e.g. addrgrp member", disabled: !!cat.loading, autocomplete: "off" });
@@ -97,5 +99,26 @@ function libraryPicker(p, values, opts, id, set, issues, cat) {
     ? `SATOM's API library, ${cat.api} ${cat.version}: loading its endpoints.`
     : n ? `SATOM's API library, ${cat.api} ${cat.version}: ${n} endpoints. Pick one, or type the method and the path below — the check refuses a path that is not one of them.`
       : `SATOM did not serve the endpoints of ${cat.api} ${cat.version}: type the method and the path; the check names a wrong one.`;
+  return field(p.label || p.name, h("div", {}, box, dl), { help, issues });
+}
+
+/* FortiAnalyzer: every call is POST /jsonrpc and what it reaches is the
+ * body's url -- the search box lists the build's urls, and picking one sets
+ * the endpoint and writes the url into the body (its method and data stay). */
+function rpcPicker(p, values, opts, id, set, issues, cat, rpc) {
+  let cur = "";
+  try { cur = (JSON.parse(values.body || "{}").params || [])[0].url || ""; } catch (e) { cur = ""; }
+  const box = h("input", { id, type: "search", class: "form-control form-control-sm ed-mono", list: `${id}-list`, value: cur, placeholder: "Type to search a url, e.g. dvmdb device", autocomplete: "off" });
+  const dl = h("datalist", { id: `${id}-list` });
+  rpc.urls.forEach((u) => dl.appendChild(h("option", { value: u })));
+  box.addEventListener("change", () => {
+    const url = box.value.trim();
+    if (!rpc.urls.includes(url)) return;
+    set("operation", rpc.op.id);
+    values.method = rpc.op.method; values.path = rpc.op.path;
+    set("body", rpcBody(url, values.body));
+    if (opts.rerender) opts.rerender();
+  });
+  const help = `SATOM's API library, ${cat.api} ${cat.version} (JSON-RPC): every call is POST ${rpc.op.path}; the body's url must be one of ${rpc.urls.length}. Pick one and it goes into the body (method "get" unless the body says another; any ADOM as adom/<name>).`;
   return field(p.label || p.name, h("div", {}, box, dl), { help, issues });
 }

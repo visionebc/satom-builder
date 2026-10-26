@@ -21,14 +21,15 @@ from __future__ import annotations
 import copy
 import re
 
-PRODUCTS = ("fortigate", "fortiweb", "fortiadc", "fortiauthenticator")
+PRODUCTS = ("fortigate", "fortiweb", "fortiadc", "fortiauthenticator", "fortianalyzer")
 NAMES = {"fortigate": "FortiGate", "fortiweb": "FortiWeb", "fortiadc": "FortiADC",
-         "fortiauthenticator": "FortiAuthenticator"}
+         "fortiauthenticator": "FortiAuthenticator", "fortianalyzer": "FortiAnalyzer"}
 #: words that name a product in an author's request
 ALIASES = {"fortigate": ("fortigate", "fortigates", "fgt", "fortios"),
            "fortiweb": ("fortiweb", "fortiwebs", "fwb"),
-           "fortiadc": ("fortiadc", "fad"),
-           "fortiauthenticator": ("fortiauthenticator", "fac")}
+           "fortiadc": ("fortiadc", "fortiadcs", "fad", "adc"),
+           "fortiauthenticator": ("fortiauthenticator", "fac"),
+           "fortianalyzer": ("fortianalyzer", "fortianalyzers", "faz")}
 _PH = re.compile(r"\{([^}/]+)\}")
 _ENTRY_KEYS = ("slug", "name", "owner", "docs_url", "description", "version", "base_path",
                "operations", "notes", "source")
@@ -128,15 +129,25 @@ def pick_build(builds: list) -> str:
     return ""
 
 
+def _paths(entry: dict) -> list[str]:
+    """What an index lists: the endpoints' paths, and for a JSON-RPC
+    endpoint (FortiAnalyzer, one ``POST /jsonrpc``) the urls its body may name."""
+    out = []
+    for o in entry.get("operations") or []:
+        rpc = o.get("rpc") if isinstance(o, dict) else None
+        out.extend(str(u) for u in rpc) if rpc else out.append(str(o.get("path") or ""))
+    return out
+
+
 def index(entry: dict) -> dict:
     """``{"prefix", "objects": {directory: "obj{key}[list list] obj ..."}}``
     from a catalog entry's endpoints: the path is prefix + directory + "/" +
     object; ``{key}`` = a table (its entry is ``/{key}``), ``[...]`` = its
     child lists (POST adds one item), no braces = a settings object (or a
-    FortiWeb/FortiADC object, whose key is ``?mkey=``)."""
+    FortiWeb/FortiADC object, whose key is ``?mkey=``). For FortiAnalyzer the
+    same over the JSON-RPC urls (``"jsonrpc": true``)."""
     objs: dict = {}
-    for o in entry.get("operations") or []:
-        path = str(o.get("path") or "")
+    for path in _paths(entry):
         head, sep, rest = path.partition("/{")
         rec = objs.setdefault(head, {"key": "", "children": set()})
         if sep:
@@ -157,7 +168,10 @@ def index(entry: dict) -> dict:
         if rec["children"]:
             s += "[%s]" % " ".join(sorted(rec["children"]))
         out.setdefault(group or "-", []).append(s)
-    return {"prefix": prefix, "objects": {g: " ".join(v) for g, v in sorted(out.items())}}
+    res = {"prefix": prefix, "objects": {g: " ".join(v) for g, v in sorted(out.items())}}
+    if any(isinstance(o, dict) and o.get("rpc") for o in entry.get("operations") or []):
+        res["jsonrpc"] = True
+    return res
 
 
 def _common_prefix(paths: list[str]) -> str:
@@ -186,7 +200,15 @@ PIN_NOTE = (
     "(\"/api/v2/cmdb/firewall/addrgrp/{{ form.group }}/member\"). An app on a schedule runs "
     "again with the same devices, and a POST of an entry that exists fails (HTTP 500): read "
     "first (GET <path>/{key}; a 404 takes the step's error arrow) and create only what is "
-    "missing -- the Builder runs it a second time to check.")
+    "missing -- the Builder runs it a second time to check. "
+    "FortiADC: the key is ?mkey=<key> on the same path, a child table is its own path with "
+    "the parent entry in ?pkey= (a pool member: POST /api/load_balance_pool_child_pool_member"
+    "?pkey=<pool>), and a missing entry answers HTTP 200 {\"payload\": null} -- not the error "
+    "arrow: test the payload. FortiAuthenticator: only the methods listed (a single object has "
+    "no /{id}/). FortiAnalyzer (\"jsonrpc\": true below): every call is POST /jsonrpc with "
+    "body {\"method\": \"get\", \"params\": [{\"url\": \"<url>\"}]} and each url "
+    "must be one listed (any ADOM as adom/<name>); the answer is HTTP 200 also when it failed: "
+    "test result[0].status.code (0 = ok, -3 = does not exist).")
 
 
 def prompt_section(entries: dict, others: dict) -> dict:
@@ -349,10 +371,56 @@ def hints(problems: list, project: dict) -> list:
 # --------------------------------------------------------------------------
 # a Fortinet call that SATOM could not check
 # --------------------------------------------------------------------------
-#: REST paths that only a Fortinet device serves (FortiGate cmdb/monitor,
-#: FortiWeb): a call to one on a connection not pinned to SATOM's API library
-#: would reach SATOM unchecked
+#: REST paths that only a Fortinet device serves: a call to one on a
+#: connection not pinned to SATOM's API library would reach SATOM unchecked.
+#: Generic shapes (``/api/v1/...``, ``/jsonrpc``, ``/api/user_x``) count only
+#: with what makes them Fortinet's, so another API's app is never flagged:
 FORTINET_PATHS = ("/api/v2/cmdb/", "/api/v2/monitor/", "/api/v2.0/")
+#: FortiAuthenticator: the 58 resources ``GET /api/v1/`` lists (fac01 8.0.3)
+FAC_RESOURCES = frozenset((
+    "auth", "csv", "emergencytoken", "faccloudhost", "fgtgroupfilter", "fortiguardmessages",
+    "fortitokenmobilelicenses", "fortitokenmobileprovisioning", "fortitokens", "ftpservers",
+    "iamaccounts", "iamusers", "idpsessiondata", "ldapusers", "licensing", "localapiadmin",
+    "localgroup-memberships", "localusers", "logsettings", "macdevices",
+    "macgroup-memberships", "macgroups", "oauth", "offlinehotpupdate", "offlineotp",
+    "passwordpolicies", "pushpoll", "radiusclientgroups", "radiusclients",
+    "radiusgroupclient", "radiuspolicies", "radiuspolicyclient", "radiuspolicyclientgroup",
+    "radiususers", "realmauth", "recovery", "scepreqs", "scheduledbackupsettings",
+    "smtpservers", "snmp", "snmpgeneral", "ssoauth", "ssogroup", "syslogservers", "system",
+    "systeminfo", "tacplusclients", "tacplusclientsgroups", "tacplusgroupclient",
+    "tacpluspolicies", "tacpluspolicyclient", "tacpluspolicygroup", "transfertoken",
+    "upgrade", "usercerts", "usergroups", "userfortitokenpolicy", "userlockoutpolicy"))
+#: FortiADC ``/api/<cli path with _>``: every name of a1's library (7.6.7,
+#: 8.0.4) starts with one of these roots; only the load-balance ones are
+#: FortiADC's alone, the rest count with a connection that names FortiADC
+_FAD_RX = re.compile(r"^/api/(config|endpoint|firewall|global|link|load|log|router|security|"
+                     r"system|user)_[a-z0-9_]+/?$")
+_FAD_OWN = re.compile(r"^/api/(global_|link_)?load_balance_")
+#: FortiAnalyzer: the url families its JSON-RPC serves
+_FAZ_URL = re.compile(r"[\"']/(cli/global|dvmdb|sys|task|logview|eventmgmt|incidentmgmt|report|"
+                      r"fazsys|fortiview|ueba|soarmgmt|pm|um)(/|[\"'])")
+
+
+def path_product(path: str, body="", hint: str = "") -> str:
+    """The Fortinet product whose REST API ``path`` is, or ''. ``body`` is the
+    step's body (a JSON-RPC call names its url there), ``hint`` the
+    connection's slug, name and URL."""
+    p = str(path or "").split("?", 1)[0].strip()
+    hint = str(hint or "").lower()
+    if p.startswith(("/api/v2/cmdb/", "/api/v2/monitor/")):
+        return "fortigate"
+    if p.startswith("/api/v2.0/"):
+        return "fortiweb"
+    m = re.match(r"^/api/v1/([a-z0-9-]+)/", p + "/")
+    if m and m.group(1) in FAC_RESOURCES:
+        return "fortiauthenticator"
+    if _FAD_RX.match(p) and (_FAD_OWN.match(p) or re.search(r"fortiadc|(^|[^a-z])(fad|adc)([^a-z]|$)", hint)):
+        return "fortiadc"
+    if re.match(r"^/jsonrpc/?$", p):
+        text = body if isinstance(body, str) else __import__("json").dumps(body or {})
+        if _FAZ_URL.search(text or ""):
+            return "fortianalyzer"
+    return ""
 
 
 def lint(project: dict, snapshot: dict | None) -> list[dict]:
@@ -391,15 +459,18 @@ def lint(project: dict, snapshot: dict | None) -> list[dict]:
             continue
         prm = n.get("params") or {}
         slug, path = str(prm.get("connection") or ""), str(prm.get("path") or "")
-        if not path.startswith(FORTINET_PATHS):
+        c = pkg.get(slug) or {}
+        hint = " ".join(str(c.get(k) or "") for k in ("slug", "name", "base_url")) or slug
+        product = path_product(path, prm.get("body") or "", hint)
+        if not product:
             continue
         pinned = (pkg[slug].get("api") in PRODUCTS) if slug in pkg else slug in server_pins
         if not pinned:
             out.append({"where": "app.graph", "rule": "builder.library_unpinned",
-                        "message": "%s: %s %s is a Fortinet REST path, but connection %s is not "
+                        "message": "%s: %s %s is a %s REST path, but connection %s is not "
                                    "pinned to SATOM's API library, so nothing checks it. Use a "
-                                   "package connection with \"api\": \"<product>\", "
+                                   "package connection with \"api\": \"%s\", "
                                    "\"api_version\": \"<build>\" (see SATOM's API library)."
                                    % (n.get("key"), (prm.get("method") or "GET").upper(), path,
-                                      slug or "(none)")})
+                                      NAMES[product], slug or "(none)", product)})
     return out

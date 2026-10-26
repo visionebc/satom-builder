@@ -7,6 +7,21 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Added
 
+- **Every Fortinet device kind, not just FortiGate** (contract section 19.1).
+  Asked: "are all the other device types fine?" With SATOM `be575e43`:
+  a FortiADC pin takes child tables (a pool member:
+  `POST /api/load_balance_pool_child_pool_member?pkey=<pool>`), a
+  FortiAuthenticator pin offers only the methods each resource was measured
+  to allow, and FortiAnalyzer can be pinned: one endpoint, `POST /jsonrpc`,
+  and the body's `params[].url` must be one of the build's urls (the check,
+  the test run and the broker refuse another). The AI reads each kind's
+  answers (FortiADC: a missing entry is HTTP 200 `{"payload": null}`, not
+  the error arrow). The unpinned-Fortinet-call problem now also names
+  FortiADC, FortiAuthenticator and FortiAnalyzer calls, without flagging
+  another API's `/api/v1/...` or `/jsonrpc`. A JSON-RPC `get` counts as a read
+  for the second walk. Editor: a FortiAnalyzer step searches the urls and
+  writes the picked one into the body.
+
 - **The AI calls a Fortinet device with SATOM's real endpoints, and a wrong
   path is refused.** Requested: "the API pack should go to the Builder, so it
   has every API and knows how to work with them" -- the FortiWeb -> FortiGate

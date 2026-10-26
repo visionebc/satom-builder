@@ -68,7 +68,28 @@ export function computeChoices(schema, app, snapshot) {
 
 /* SATOM's API library (contract section 19): the products a connection pins
  * to a firmware build, and the endpoint lists the editor loaded for them. */
-export const LIBRARY_PRODUCTS = { fortigate: "FortiGate", fortiweb: "FortiWeb", fortiadc: "FortiADC", fortiauthenticator: "FortiAuthenticator" };
+export const LIBRARY_PRODUCTS = { fortigate: "FortiGate", fortiweb: "FortiWeb", fortiadc: "FortiADC", fortiauthenticator: "FortiAuthenticator", fortianalyzer: "FortiAnalyzer" };
+
+/* A JSON-RPC version (FortiAnalyzer): ONE endpoint, POST /jsonrpc, whose
+ * `rpc` lists the urls a body may name. -> {op, urls} or null. */
+export function rpcEndpoint(ops) {
+  const op = (ops || []).find((o) => o && Array.isArray(o.rpc) && o.rpc.length);
+  return op ? { op, urls: op.rpc.slice() } : null;
+}
+
+/* The body of a JSON-RPC call to `url`: the step's own body with its first
+ * url replaced when it already is one (its method and data stay), else a
+ * fresh `get`. Text, as the step's JSON param holds it. */
+export function rpcBody(url, prev) {
+  let doc = null;
+  try { doc = typeof prev === "string" ? JSON.parse(prev) : prev; } catch (e) { doc = null; }
+  if (doc && typeof doc === "object" && Array.isArray(doc.params) && doc.params.length
+      && doc.params[0] && typeof doc.params[0] === "object") {
+    doc.params[0].url = url;
+    return JSON.stringify(doc);
+  }
+  return JSON.stringify({ method: "get", params: [{ url }] });
+}
 const libraryOps = new Map();
 export function setLibraryOps(key, ops) { libraryOps.set(key, Array.isArray(ops) ? ops : []); }
 export function hasLibraryOps(key) { return libraryOps.has(key); }

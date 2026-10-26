@@ -18,6 +18,7 @@ available (no jail, a pack without it) skips the render and says so.
 from __future__ import annotations
 
 import json
+import re
 
 from . import runtime, testdata
 
@@ -193,6 +194,21 @@ ALREADY_EXISTS = {"method": "POST", "path": "**", "status": 500,
                            "error": -5, "cli_error": "entry already exists"}}
 
 
+#: JSON-RPC verbs (FortiAnalyzer, every call POST /jsonrpc) that only read
+_RPC_READS = ("get",)
+
+
+def _call_method(prm: dict) -> str:
+    """The method an api_call step means: its HTTP method, except a JSON-RPC
+    call (POST /jsonrpc) whose body's ``"method": "get"`` is a read."""
+    m = str(prm.get("method") or "GET").upper()
+    if m == "POST" and str(prm.get("path") or "").split("?", 1)[0].rstrip("/") == "/jsonrpc":
+        verb = re.search(r'"method"\s*:\s*"([A-Za-z_]+)"', str(prm.get("body") or ""))
+        if verb and verb.group(1).lower() in _RPC_READS:
+            return "GET"
+    return m
+
+
 def _second_run(candidate: dict):
     """The connections to answer "already exists" on a second walk, or None:
     an app on a schedule (it runs again with the same devices) that POSTs to
@@ -211,7 +227,7 @@ def _second_run(candidate: dict):
         if not isinstance(n, dict) or n.get("kind") != "api_call":
             continue
         prm = n.get("params") or {}
-        m = str(prm.get("method") or "GET").upper()
+        m = _call_method(prm)
         (posts if m == "POST" else reads if m == "GET" else set()).add(str(prm.get("connection") or ""))
     hit = sorted((pinned & posts) - reads)
     return hit or None
