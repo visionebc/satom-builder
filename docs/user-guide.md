@@ -33,7 +33,19 @@ After five wrong passwords for one user name (or twenty from one address) within
 
 ## 2. Projects
 
-**Projects** (sidebar › Build) lists your projects: name, the result of the last check, kind, version, SATOM target, slug, and when it changed. Administrators can switch to *Everybody's* projects.
+**Projects** (sidebar › Build) lists your projects: name, the result of the last check, kind, the SATOM ADOM it installs in, version, SATOM target, slug, and when it changed. The **eye** next to a name shows what the project is for (its description) when you point at it. **Search** looks in names, slugs and descriptions; the filters narrow by **kind**, **target**, **ADOM** and **last check** (passed, problems, never checked), and **Clear** shows everything again. Administrators can switch to *Everybody's* projects.
+
+### View, widget or app?
+
+| Kind | What it is | For | Example |
+|---|---|---|---|
+| **View** | A page in SATOM (Custom Views). It *reads* SATOM's data — every dataset: the device cache (FortiGate rules and addresses, FortiWeb policies, FortiADC pools…), the fleet, the administrator datasets — and shows it, filtered by input parameters such as an IP. It never changes anything. | search, look up, report, list | *Which firewall rules use this IP?* |
+| **Widget** | A small tile on a SATOM dashboard: a view sized for a glance. | a count, a status, a short list | *Server policies without a WAF profile: 3* |
+| **App** | A Plugin Studio app: a form and a diagram of steps that *do* things — call an API, read and write data stores, run a sandboxed script, act on appliances, ask for approval. It **cannot read SATOM's datasets**. | requests and workflows that create or change something | *Publish a site: reserve the IP in DDI, create the FortiWeb policy, ask for approval* |
+
+Rule of thumb: **show or search what SATOM already knows → a view** (or a widget on a dashboard); **do something — create, change, call another system, ask for approval → an app**. So "search an IP in the FortiGate rules" is a view. SATOM shows the same words in Report Studio and Plugin Studio.
+
+The kind can be changed later in the project settings (**Kind**): the draft keeps everything, but only the new kind's parts go into the package (a view packs its files, datasets and parameters; an app its form, diagram, stores, connections and scripts), and the last check is cleared.
 
 ### New project
 
@@ -42,12 +54,13 @@ After five wrong passwords for one user name (or twenty from one address) within
 | Field | Meaning |
 |---|---|
 | Name | What SATOM shows (up to 200 characters). |
-| Kind | *App*, *View* or *Widget*. (SATOM's `code` kind cannot be built here.) |
+| Kind | *View* (the default), *Widget* or *App*, offered as cards that say what each is (see above). SATOM's `code` kind cannot be built here. |
 | Slug | The plugin's identity in SATOM: lowercase letters, digits and dashes. Left empty, it is made from the name. |
 | Version | `X.Y.Z`. |
-| Icon | A Bootstrap icon class, for example `bi-puzzle`. |
+| Icon | A Bootstrap icon class, for example `bi-puzzle`. The grid button opens every icon a plugin may use (about 2,000), with a search; typing the name works too. |
 | SATOM target | The SATOM this plugin is meant for. Its rules pack is the one that validates the project. You can set it later. |
-| Description | Up to 500 characters. |
+| SATOM ADOM | Where it installs in SATOM: **Auto** (the ADOM of the product datasets it reads; two products: Global), **Global** or an ADOM. Changeable in the settings. |
+| Description | Up to 500 characters: what the project is for. The list shows it behind the eye icon. |
 
 ### Adopt a package
 
