@@ -57,6 +57,12 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   reproduce: it is not walked again (that flagged a correct app). A path
   written as one expression (`{{ '/api/...' + ip }}`) gets its literal form
   in the problem.
+- **Test answers in the device's own shape.** A connection pinned to SATOM's
+  API library is answered as the product answers: FortiGate
+  `{"results": [...], "status": "success", ...}` (measured on fgt02),
+  FortiWeb `{"results": ...}`, FortiADC `{"payload": ...}`,
+  FortiAuthenticator `{"meta", "objects"}`. A bare list made an app written
+  against the real FortiGate (`resp.results`) fail its test run.
 - **Test data for a connection pinned to a large API version.** One test
   answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
   test-data connection holds: generating test data failed with 400. A large

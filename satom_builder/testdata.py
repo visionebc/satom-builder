@@ -289,6 +289,34 @@ def _used_ops(project: dict, conn: dict, ops: list[dict]) -> list[dict]:
     return out[:MAX_RESPONSES - 2]
 
 
+#: test answers of a connection pinned to SATOM's API library come in the
+#: product's own envelope (FortiGate measured on fgt02 8.0.1; the others as
+#: SATOM's device clients read them): an app written against the real device
+#: (``resp.results``) must not fail on a bare list (lab, 2026-10-26)
+_ROW = {"name": "item-1", "q_origin_key": "item-1"}
+
+
+def library_answer(product: str, method: str) -> dict:
+    read = method == "GET"
+    if product == "fortigate":
+        body = {"http_method": method, "status": "success", "http_status": 200,
+                "vdom": "root", "path": "test", "name": "test"}
+        if read:
+            body["results"] = [dict(_ROW)]
+        else:
+            body["mkey"] = "item-1"
+        return body
+    if product == "fortiweb":
+        return {"results": [dict(_ROW)] if read else {"errcode": 0}}
+    if product == "fortiadc":
+        return {"payload": [{"mkey": "item-1", "name": "item-1"}] if read else 0}
+    if product == "fortiauthenticator":
+        return ({"meta": {"limit": 20, "next": None, "offset": 0, "previous": None,
+                          "total_count": 1}, "objects": [{"id": 1, "name": "item-1"}]}
+                if read else {"id": 1, "name": "item-1"})
+    return [{"id": 1, "name": "item-1"}] if read else {"ok": True}
+
+
 def connection_template(project: dict, conn: dict) -> dict:
     if conn.get("kind") == "postgres":
         return {"queries": [{"match": "SELECT", "rows": [{"id": 1, "name": "row-1"}]}]}
@@ -298,15 +326,21 @@ def connection_template(project: dict, conn: dict) -> dict:
         # a large version (a build of SATOM's API library is ~3,700 endpoints):
         # answer the endpoints this connection's steps call, plus the catch-alls
         ops = _used_ops(project, conn, ops)
+    from . import fortinet_apis
+    product = conn.get("api") if conn.get("api") in fortinet_apis.PRODUCTS else ""
     for op in ops:
         path = re.sub(r"\{[^}/]+\}", "*", str(op.get("path") or "/"))
-        body = [{"id": 1, "name": "item-1"}] if op.get("method", "GET") == "GET" else {"ok": True}
+        method = str(op.get("method") or "GET").upper()
+        body = library_answer(product, method) if product else (
+            [{"id": 1, "name": "item-1"}] if method == "GET" else {"ok": True})
         responses.append({"method": str(op.get("method") or "GET").upper(), "path": path,
                           "status": 200, "body": body})
     if not responses or len(ops) < len(_api_ops(project, conn)):
         responses += [{"method": "GET", "path": "*", "status": 200,
-                       "body": {"items": [{"id": 1, "name": "item-1"}]}},
-                      {"method": "*", "path": "*", "status": 200, "body": {"ok": True}}]
+                       "body": library_answer(product, "GET") if product
+                       else {"items": [{"id": 1, "name": "item-1"}]}},
+                      {"method": "*", "path": "*", "status": 200,
+                       "body": library_answer(product, "POST") if product else {"ok": True}}]
     return {"responses": responses,
             "default": {"status": 404, "body": {"error": "no test response for this request"}}}
 
