@@ -87,8 +87,11 @@ export function problems(entries, fields, lim) {
     if (typeof inputs !== "object" || Array.isArray(inputs)) { say("inputs is an object of form field: value"); return; }
     Object.keys(inputs).forEach((k) => { if (!names.has(k)) say(`input ${JSON.stringify(k)} is not a field of the app's form`); });
     (fields || []).forEach((f) => {
-      if (f && f.required && !(f.name in inputs) && (f.default === undefined || f.default === null || f.default === "")) {
-        say(`form field ${JSON.stringify(f.name)} is required and has no default: give it here`);
+      const v = f ? inputs[f.name] : undefined;
+      const empty = v === undefined || v === null || (typeof v === "string" && !v.trim());
+      // an empty value is not given: the scheduled run would stop at "is required" (as SATOM says)
+      if (f && f.required && empty && (f.default === undefined || f.default === null || f.default === "")) {
+        say(`form field ${JSON.stringify(f.name)} is required and has no default: give it a value here`);
       }
     });
   });

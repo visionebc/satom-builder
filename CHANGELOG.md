@@ -42,6 +42,9 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   fleet, a pinned connection answered from SATOM's endpoints), with the
   inputs of its first automation; a failure goes back to the AI with the step
   and the error, as a view's failed render already did.
+- **An automation's empty value for a required field is flagged** in the
+  Automations tab, as SATOM now refuses it (the scheduled run would stop at
+  "is required" every time).
 - **Test data for a connection pinned to a large API version.** One test
   answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
   test-data connection holds: generating test data failed with 400. A large
