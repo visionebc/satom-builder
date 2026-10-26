@@ -348,6 +348,16 @@ def nearest(entry: dict, method: str, path: str, n: int = 5) -> list[str]:
     return out[:n]
 
 
+def _rpc_known(urls, url: str) -> bool:
+    want = [x for x in _TPL.sub("\x00", str(url or "").split("?", 1)[0]).split("/") if x]
+    for u in urls or []:
+        have = [x for x in str(u).split("/") if x]
+        if len(have) == len(want) and all(w == "\x00" or h.startswith("{") or w == h
+                                          for w, h in zip(want, have)):
+            return True
+    return False
+
+
 def hints(problems: list, project: dict) -> list:
     """``problems`` with, after each "is not an endpoint in API <library
     product> <build>", the nearest endpoints of that build."""
@@ -357,6 +367,21 @@ def hints(problems: list, project: dict) -> list:
     for p in problems or []:
         m = _NOT_EP.search(str((p or {}).get("message") or "")) if isinstance(p, dict) else None
         e = apis.get((m.group(3), m.group(4))) if m else None
+        rpc = next((o for o in (e or {}).get("operations") or [] if isinstance(o, dict)
+                    and o.get("rpc")), None) if m else None
+        if m and rpc is not None:
+            # lab, 2026-10-26: "GET /dvmdb/adom/root/device" written as an HTTP path
+            url = m.group(2)
+            known = _rpc_known(rpc["rpc"], url)
+            p = dict(p, message=p["message"] + (
+                " -- %s speaks JSON-RPC: every call is %s %s with body {\"method\": "
+                "\"%s\", \"params\": [{\"url\": \"%s\"}]}%s" % (
+                    NAMES.get(m.group(3), m.group(3)), rpc.get("method"), rpc.get("path"),
+                    "get" if m.group(1) == "GET" else "set|add|update|delete", url,
+                    " (%s is one of its urls)" % url if known else
+                    "; its urls are in SATOM's API library (the index above)")))
+            out.append(p)
+            continue
         if m and e is not None and m.group(3) in PRODUCTS:
             lit = literal_path(m.group(2))
             if lit:
