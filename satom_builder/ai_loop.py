@@ -385,8 +385,32 @@ def parse_answer(text: str) -> dict:
     return parse_answer_full(text)[0]
 
 
-def parse_answer_full(text: str, allow_message: bool = False) -> tuple[dict, str]:
-    """-> (the draft keys, the "message" when *allow_message*)."""
+#: app.json keys a model sometimes writes next to "app" instead of inside it
+#: (gpt-oss, lab 2026-10-26: two of three rounds lost to it)
+APP_BODY_KEYS = ("stores", "connections", "apis", "scripts", "automations")
+
+
+def lift_app_parts(obj: dict, current: dict | None) -> dict:
+    """An app answer's ``stores``/``connections``/``apis``/``scripts``/
+    ``automations`` written at the top level go INTO the app body: on top of
+    the answer's own ``"app"``, or of the current draft's when the answer has
+    none (so the diagram is not lost). A key the answer's ``"app"`` already
+    has wins over the misplaced one."""
+    parts = {k: obj[k] for k in APP_BODY_KEYS if k in obj}
+    if not parts or (current or {}).get("kind") != "app":
+        return obj
+    out = {k: v for k, v in obj.items() if k not in APP_BODY_KEYS}
+    base = out.get("app") if isinstance(out.get("app"), dict) else \
+        json.loads(json.dumps((current or {}).get("app") or {}))
+    out["app"] = dict(parts, **base) if "app" in out else dict(base, **parts)
+    return out
+
+
+def parse_answer_full(text: str, allow_message: bool = False,
+                      current: dict | None = None) -> tuple[dict, str]:
+    """-> (the draft keys, the "message" when *allow_message*). With the
+    *current* draft, an app's misplaced app.json keys are lifted into "app"
+    (:func:`lift_app_parts`) instead of failing the round."""
     s = (text or "").strip()
     m = _FENCE.match(s)
     if m:
@@ -403,6 +427,7 @@ def parse_answer_full(text: str, allow_message: bool = False) -> tuple[dict, str
             raise ParseError(f"The answer is not valid JSON: {exc}") from None
     if not isinstance(obj, dict):
         raise ParseError("The answer is JSON but not an object.")
+    obj = lift_app_parts(obj, current)
     extra = BUILDER_KEYS + (("message",) if allow_message else ())
     unknown = [k for k in obj if k not in RESULT_KEYS and k not in extra]
     if unknown:
@@ -492,7 +517,7 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
             pg.model_done()
             pg.step(f"Reading the answer ({len(answer):,} characters)")
         try:
-            patch, note = parse_answer_full(answer, allow_message=True)
+            patch, note = parse_answer_full(answer, allow_message=True, current=current)
             message = note or message
             if not patch and (chat or note):
                 # after a round with problems, a message changes nothing:
@@ -537,6 +562,7 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
         except package.PackageError as exc:
             last = {"ok": False, "problems": [{"where": "package", "message": str(exc)}],
                     "warnings": []}
+        pin_problems += fortinet_apis.lint(candidate, snapshot)
         if pin_problems:
             last = dict(last, ok=False,
                         problems=list(last.get("problems") or []) + pin_problems)

@@ -24,8 +24,15 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   PUT of a list replaces it; POST one item to `.../addrgrp/{name}/member`).
   The draft never keeps the list: an AI answer or a save that carries one
   loses it. In the editor the connection offers the library's builds (the
-  fleet's first) and **Call an API** searches the build's endpoints. Needs
+  fleet's first) and **Call an API** searches the build's endpoints. A call
+  to a Fortinet REST path on a connection pinned nowhere (it would reach
+  SATOM unchecked), and a pinned package connection whose name SATOM already
+  has without that pin (the import keeps SATOM's), are problems too. Needs
   the SATOM of the same round.
+- **An answer with the app's parts in the wrong place is used, not
+  rejected.** `connections`, `stores`, `automations`... written next to
+  `"app"` instead of inside it go into the app (gpt-oss lost two of three
+  rounds of the lab run to "Unknown key(s)").
 - **Room for the answer.** An app's prompt no longer carries the views'
   section of SATOM's author guide (22k characters of dataset lists on a1)
   nor the step kinds a second time: 80 KB -> about 52 KB before the endpoint

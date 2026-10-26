@@ -11,7 +11,7 @@ import uuid
 
 from flask import Blueprint, current_app, g, make_response, request
 
-from .. import ai_loop, db, package, projects, rules, targets
+from .. import ai_loop, db, fortinet_apis, package, projects, rules, targets
 from ..ai_adapters import AIError
 from ..profiles import adapter_for
 from ..profiles import get as get_profile
@@ -112,6 +112,13 @@ def _local_check(conn, row) -> tuple[dict | None, str]:
     except (NotReady, SatomError, rules.RulesError) as exc:
         return None, getattr(exc, "message", None) or str(exc)
     res = pack.check(data, snap, "builder")
+    if row["kind"] == "app":
+        built = projects.to_api(conn, row)
+        extra = fortinet_apis.lint(built, snap)
+        t2 = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
+        built, _ = targets.library_completion(conn, t2, g.user.id)(built)
+        probs = fortinet_apis.hints(list(res.get("problems") or []), built) + extra
+        res = dict(res, problems=probs, ok=bool(res.get("ok")) and not extra)
     _publisher_hint(res)
     return res, ""
 

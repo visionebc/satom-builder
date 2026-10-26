@@ -175,12 +175,15 @@ def _common_prefix(paths: list[str]) -> str:
 
 
 PIN_NOTE = (
-    "To call a Fortinet device, pin the HTTP connection to SATOM's API library: "
-    "\"api\": \"<product>\", \"api_version\": \"<build>\" (the build below). Do NOT write an "
-    "\"apis\" entry for it: the Builder adds SATOM's endpoint list. Every api_call method + "
-    "path must be an endpoint below (path = prefix + object, a table's entry as /{key}, a "
-    "child list as /{key}/<list>), or SATOM refuses the package. Put a template in a path "
-    "segment for a value (\"/api/v2/cmdb/firewall/addrgrp/{{ vars.group }}/member\").")
+    "To call a Fortinet device, define an HTTP connection IN THE PACKAGE (app.connections) "
+    "pinned to SATOM's API library: \"api\": \"<product>\", \"api_version\": \"<build>\" (the "
+    "build below), with a slug no connection on the server has (a server connection keeps "
+    "its own settings). Do NOT write an \"apis\" entry for it: the Builder adds SATOM's "
+    "endpoint list. In each api_call leave \"operation\" empty and write \"method\" and "
+    "\"path\": the path must be an endpoint below (prefix + directory/object; a table's "
+    "entry is /{key}, a child list /{key}/<list>), or SATOM refuses the package. Put a "
+    "template in a path segment for a value "
+    "(\"/api/v2/cmdb/firewall/addrgrp/{{ form.group }}/member\").")
 
 
 def prompt_section(entries: dict, others: dict) -> dict:
@@ -301,4 +304,63 @@ def hints(problems: list, project: dict) -> list:
                 p = dict(p, message=p["message"] + " -- nearest endpoints of %s %s: %s"
                          % (m.group(3), m.group(4), "; ".join(near)))
         out.append(p)
+    return out
+
+
+# --------------------------------------------------------------------------
+# a Fortinet call that SATOM could not check
+# --------------------------------------------------------------------------
+#: REST paths that only a Fortinet device serves (FortiGate cmdb/monitor,
+#: FortiWeb): a call to one on a connection not pinned to SATOM's API library
+#: would reach SATOM unchecked
+FORTINET_PATHS = ("/api/v2/cmdb/", "/api/v2/monitor/", "/api/v2.0/")
+
+
+def lint(project: dict, snapshot: dict | None) -> list[dict]:
+    """The Builder's own problems about Fortinet calls, after SATOM's check:
+
+    * an ``api_call`` to a Fortinet REST path on a connection that is not
+      pinned (in the package, or on the server) -- SATOM checks a path only on
+      a pinned connection, so it would pass unchecked;
+    * a package connection pinned to the library whose slug already exists on
+      the server with another pin or none -- the import keeps the server's
+      connection, so the pin would be lost."""
+    if project.get("kind") != "app":
+        return []
+    body = _body(project)
+    pkg = {str(c.get("slug")): c for c in body.get("connections") or []
+           if isinstance(c, dict) and c.get("slug")}
+    ch = (snapshot or {}).get("choices") or {}
+    server_pins = {str(k): v for k, v in (ch.get("catalog") or {}).items() if isinstance(v, dict)}
+    existing = ((snapshot or {}).get("existing") or {}).get("connections") or {}
+    out = []
+    for slug, c in pkg.items():
+        if c.get("api") not in PRODUCTS or slug not in existing:
+            continue
+        have = server_pins.get(slug) or {}
+        if (have.get("api"), str(have.get("version") or "")) != (c["api"], str(c.get("api_version"))):
+            out.append({"where": "connections[%s]" % slug, "rule": "builder.library_pin",
+                        "message": "connection %s already exists on SATOM (%s): the import keeps "
+                                   "SATOM's, so the pin to %s %s would be lost. Give the "
+                                   "package's connection another slug (e.g. %s-%s)."
+                                   % (slug, "pinned to %s %s" % (have.get("api"), have.get("version"))
+                                      if have else "not pinned", c["api"], c.get("api_version"),
+                                      c["api"], str(c.get("api_version")).replace(".", ""))})
+    nodes = ((body.get("app") or {}).get("graph") or {}).get("nodes") or []
+    for n in nodes:
+        if not isinstance(n, dict) or n.get("kind") != "api_call":
+            continue
+        prm = n.get("params") or {}
+        slug, path = str(prm.get("connection") or ""), str(prm.get("path") or "")
+        if not path.startswith(FORTINET_PATHS):
+            continue
+        pinned = (pkg[slug].get("api") in PRODUCTS) if slug in pkg else slug in server_pins
+        if not pinned:
+            out.append({"where": "app.graph", "rule": "builder.library_unpinned",
+                        "message": "%s: %s %s is a Fortinet REST path, but connection %s is not "
+                                   "pinned to SATOM's API library, so nothing checks it. Use a "
+                                   "package connection with \"api\": \"<product>\", "
+                                   "\"api_version\": \"<build>\" (see SATOM's API library)."
+                                   % (n.get("key"), (prm.get("method") or "GET").upper(), path,
+                                      slug or "(none)")})
     return out
