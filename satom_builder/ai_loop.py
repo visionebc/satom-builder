@@ -221,6 +221,34 @@ def adom_summary(snapshot: dict) -> dict | None:
     return out
 
 
+#: Parameters every step carries for the procedure text (studio_flow.
+#: COMMON_PARAMS); the walk never reads them.
+COMMON_STEP_PARAMS = ("doc", "role", "time")
+
+
+def compact_step_kinds(kinds) -> dict:
+    """An app prompt's step kinds: the summary, whether it writes and each
+    parameter's help -- the names, types, choices and defaults are already in
+    the author guide (system prompt). The full list was 47k characters (about
+    12k tokens) of a ~27k-token prompt: with a 32k-context model the repair
+    round had no room left to answer (lab, 2026-10-26: "The output was too
+    long" in round 2 of the FortiWeb -> FortiGate request)."""
+    out = {}
+    for k in kinds or []:
+        if not isinstance(k, dict) or not k.get("key"):
+            continue
+        params = {}
+        for p in k.get("params") or []:
+            if not isinstance(p, dict) or p.get("name") in COMMON_STEP_PARAMS:
+                continue
+            params[str(p.get("name"))] = str(p.get("help") or "")
+        e = {"summary": str(k.get("summary") or ""), "params": params}
+        if k.get("writes"):
+            e["writes"] = True
+        out[str(k["key"])] = e
+    return out
+
+
 def target_summary(snapshot: dict, kind: str = "app") -> dict:
     """Names and shapes only, from an allow-list of snapshot keys. A view or a
     widget gets only what a view can use."""
@@ -260,9 +288,20 @@ def target_summary(snapshot: dict, kind: str = "app") -> dict:
         "datasets": app_dataset_note(choices.get("datasets")),
         "existing": {"apps": apps, "stores": stores, "connections": conns,
                      "api_versions": apis, "scripts": scripts},
-        # an app reads no dataset: the ~600 keys stay out of its prompt
-        "schema": {k: v for k, v in (snapshot.get("schema") or {}).items() if k != "datasets"},
+        # an app reads no dataset: the ~600 keys stay out of its prompt;
+        # the step kinds go compact (the guide lists their parameters)
+        "schema": _app_schema(snapshot.get("schema") or {}),
     }
+
+
+def _app_schema(schema: dict) -> dict:
+    out = {k: v for k, v in schema.items() if k != "datasets"}
+    if "step_kinds" in out:
+        out["step_kinds"] = compact_step_kinds(out["step_kinds"])
+        out["step_kinds_note"] = ("parameter help per step; names, types, choices and "
+                                  "defaults are in the author guide. Every step also takes "
+                                  "doc, role and time (procedure text, never read by the run).")
+    return out
 
 
 def draft_for_prompt(project: dict) -> dict:
