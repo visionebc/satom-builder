@@ -98,7 +98,7 @@ export default {
         h("div", { class: "ed-item-head" }, badge(describe(a.schedule_kind, a.schedule), "info"), " ", h("strong", { text: a.name || "(no name)" }), h("div", { class: "ed-row-tools" }, remove)),
         issues.length ? h("div", { class: "ed-issue", role: "note" }, issues.map((m) => h("div", { text: m }))) : null,
         h("div", { class: "ed-grid ed-grid-3" }, field("Name", name, { required: true }), field("When", kind), ...scheduleControls(a, pre, ctx, L)),
-        h("h4", { class: "ed-subtitle", text: "Form values" }),
+        h("h4", { class: "ed-sub", text: "Form values" }),
         h("p", { class: "ed-intro", text: "Nobody fills in the form when it runs on its own: every required field is given here." }),
         h("div", { class: "ed-grid ed-grid-2" }, inputControls(a, pre, ctx, fields)),
         field("Description", desc)));
