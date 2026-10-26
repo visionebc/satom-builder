@@ -174,3 +174,19 @@
 .sb-turn-you-box { background: var(--fw-surface-alt); }
 .sb-turn-you, .sb-turn-ai { white-space: pre-wrap; word-break: break-word; }
 
+/* View, widget or app (satom_builder.kinds) */
+.sb-kind-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.sb-kind-card { border: 1px solid var(--fw-border); border-radius: 6px; padding: 8px 10px; background: var(--fw-surface); }
+.sb-kind-option { cursor: pointer; }
+.sb-kind-option:has(input:checked) { border-color: var(--fw-accent); background: var(--fw-accent-light); }
+.sb-kind-guide > summary { cursor: pointer; }
+
+/* icon picker (icon-picker.js) and the "what it is for" eye */
+.sb-icon-panel { border: 1px solid var(--fw-border); border-radius: 6px; padding: 8px; margin-top: 4px; background: var(--fw-surface); box-shadow: var(--fw-card-shadow, 0 3px 12px rgba(16,32,52,.08)); max-width: 520px; position: relative; z-index: 20; }
+.sb-icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; max-height: 260px; overflow: auto; }
+.sb-icon-cell { border: 1px solid var(--fw-border-light, #EAEFF9); background: var(--fw-surface-alt); border-radius: 4px; height: 36px; font-size: 18px; }
+.sb-icon-cell:hover, .sb-icon-cell:focus-visible { border-color: var(--fw-accent); }
+.sb-icon-cell.is-selected { border-color: var(--fw-accent); background: var(--fw-accent-light); }
+.sb-about { color: var(--fw-text-secondary); cursor: help; margin-left: 4px; font-size: .9em; }
+.sb-about:hover, .sb-about:focus { color: var(--fw-accent); }
+

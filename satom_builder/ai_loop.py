@@ -139,8 +139,10 @@ APP_DATASET_NOTE = (
     "build an app around it and never say the data does not exist: answer with only "
     "{\"message\"} explaining that it is a view's job -- a view with an input parameter "
     "(for example the IP) reads those datasets and filters them -- and that the author "
-    "creates a view project for it (New project, kind view). Build an app only when the "
-    "request is a form and a diagram over the steps listed in the schema.")
+    "switches this project to a view (project page > Project settings > Kind: View; the "
+    "draft is kept) and asks again. Rule: show or search what SATOM knows = a view; do "
+    "something (create, change, call another system, ask for approval) = an app. Build an "
+    "app only when the request is a form and a diagram over the steps listed in the schema.")
 
 
 #: SATOM's plugin sandbox (plugin_sandbox._SANDBOX: ImmutableSandboxedEnvironment,

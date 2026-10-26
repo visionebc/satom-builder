@@ -1,11 +1,13 @@
 """Project pages: list, new, adopt a package, overview, settings, bump, delete."""
 from __future__ import annotations
 
+import functools
 import re
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import (Blueprint, abort, flash, g, jsonify, redirect, render_template, request,
+                   url_for)
 
-from .. import db, package, profiles, projects, targets
+from .. import db, kinds, package, profiles, projects, targets
 from ..security import audit, login_required
 
 bp = Blueprint("projects", __name__, url_prefix="/projects")
@@ -23,20 +25,84 @@ def _slugify(name: str) -> str:
     return (s or "plugin")[:80].strip("-") or "plugin"
 
 
+@bp.get("/icons.json")
+@login_required
+def icons():
+    """Every Bootstrap icon the vendored font draws that a plugin may use
+    (``package.ICON_RE``), for the icon pickers. Read once from the CSS."""
+    resp = jsonify(icon_names())
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@functools.lru_cache(maxsize=1)
+def icon_names() -> list[str]:
+    from pathlib import Path
+    css = (Path(__file__).resolve().parent.parent / "static" / "vendor" / "bootstrap-icons"
+           / "bootstrap-icons.min.css").read_text(encoding="utf-8")
+    names = sorted(set(re.findall(r"\.(bi-[a-z0-9-]+)::?before", css)))
+    return [n for n in names if package.ICON_RE.match(n)]
+
+
+#: the list's filters (server-side: the page shows only what matches)
+CHECKS = ("ok", "problems", "never")
+
+
+def _check_state(row) -> str:
+    lc = db.loads(row["last_check"])
+    res = (lc or {}).get("result") if isinstance(lc, dict) else None
+    if not isinstance(res, dict):
+        return "never"
+    return "ok" if res.get("ok") else "problems"
+
+
 @bp.get("/")
 @login_required
 def index():
     conn = db.get()
-    if g.user.is_admin and request.args.get("all") == "1":
+    show_all = g.user.is_admin and request.args.get("all") == "1"
+    if show_all:
         rows = conn.execute("SELECT p.*, u.username AS owner FROM projects p JOIN users u "
                             "ON u.id = p.owner_id ORDER BY p.updated_at DESC").fetchall()
     else:
         rows = conn.execute("SELECT p.*, u.username AS owner FROM projects p JOIN users u "
                             "ON u.id = p.owner_id WHERE p.owner_id = ? "
                             "ORDER BY p.updated_at DESC", (g.user.id,)).fetchall()
-    tnames = {t["id"]: t["name"] for t in targets.list_targets(conn)}
-    return render_template("projects/index.html", rows=rows, tnames=tnames,
-                           show_all=request.args.get("all") == "1")
+    tlist = targets.list_targets(conn)
+    tnames = {t["id"]: t["name"] for t in tlist}
+    f = {"q": (request.args.get("q") or "").strip()[:200],
+         "kind": request.args.get("kind") or "", "target": request.args.get("target") or "",
+         "adom": request.args.get("adom") or "", "check": request.args.get("check") or ""}
+    # where each project installs: one library per target (cached), the rule is pure
+    libs: dict = {}
+    for t in tlist:
+        if targets.has_token(conn, g.user.id, t["id"]):
+            libs[t["id"]] = targets.library(conn, t, g.user.id)
+    out = []
+    for r in rows:
+        draft = db.loads(r["draft"], {}) or {}
+        where = None
+        if r["target_id"] in libs and libs[r["target_id"]]:
+            where = targets.install_adom(r["kind"], draft.get("datasets") or [],
+                                         str(draft.get("adom") or ""), libs[r["target_id"]])
+        adom = (where or {}).get("shown") or str(draft.get("adom") or "")
+        item = {"r": r, "where": where, "adom": adom, "check": _check_state(r)}
+        hay = " ".join(str(r[k] or "") for k in ("name", "slug", "description")).lower()
+        if f["q"] and f["q"].lower() not in hay:
+            continue
+        if f["kind"] and r["kind"] != f["kind"]:
+            continue
+        if f["target"] and str(r["target_id"] or "none") != f["target"]:
+            continue
+        if f["adom"] and adom != f["adom"]:
+            continue
+        if f["check"] and item["check"] != f["check"]:
+            continue
+        out.append(item)
+    return render_template("projects/index.html", items=out, total=len(rows), tnames=tnames,
+                           targets=tlist, f=f, show_all=show_all,
+                           adoms=targets.known_adoms(conn, g.user.id),
+                           filtered=any(f.values()))
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -44,8 +110,9 @@ def index():
 def new():
     conn = db.get()
     tlist = targets.list_targets(conn)
-    form = {"name": "", "kind": "app", "slug": "", "version": "1.0.0", "icon": "bi-puzzle",
-            "description": "", "target_id": ""}
+    form = {"name": "", "kind": request.args.get("kind") or "view", "slug": "",
+            "version": "1.0.0", "icon": "bi-puzzle", "description": "", "target_id": "",
+            "adom": ""}
     if request.method == "POST":
         form.update({k: (request.form.get(k) or "").strip() for k in form})
         tid = int(form["target_id"]) if form["target_id"].isdigit() else None
@@ -54,14 +121,16 @@ def new():
                                   slug=form["slug"] or _slugify(form["name"]),
                                   version=form["version"] or "1.0.0",
                                   icon=form["icon"] or "bi-puzzle",
-                                  description=form["description"], target_id=tid)
+                                  description=form["description"], target_id=tid,
+                                  adom=form["adom"])
         except projects.ShapeError as exc:
             flash(exc.message, "danger")
         else:
             audit("project.create", form["slug"] or _slugify(form["name"]), id=pid,
                   kind=form["kind"])
             return redirect(url_for("projects.overview", pid=pid))
-    return render_template("projects/new.html", form=form, targets=tlist)
+    return render_template("projects/new.html", form=form, targets=tlist,
+                           adoms=targets.known_adoms(conn, g.user.id))
 
 
 @bp.route("/adopt", methods=["GET", "POST"])
@@ -102,7 +171,16 @@ def overview(pid):
     has_tok = bool(target) and targets.has_token(conn, g.user.id, target["id"])
     owner = conn.execute("SELECT username FROM users WHERE id = ?",
                          (row["owner_id"],)).fetchone()
+    where = None
+    if target is not None and has_tok:
+        try:
+            where = targets.project_adom(conn, row, g.user, target)
+        except Exception:  # noqa: BLE001 -- the page shows without it
+            where = None
+    draft = db.loads(row["draft"], {}) or {}
     return render_template("projects/overview.html", p=row, target=target, has_token=has_tok,
+                           where=where, adom=str(draft.get("adom") or ""),
+                           adoms=targets.known_adoms(conn, g.user.id),
                            owner=owner["username"] if owner else "?",
                            last_check=db.loads(row["last_check"]),
                            assets=projects.asset_list(conn, pid),
@@ -116,7 +194,9 @@ def settings(pid):
     row = _own(pid)
     conn = db.get()
     body = {k: (request.form.get(k) or "").strip() for k in
-            ("name", "slug", "version", "icon", "description")}
+            ("name", "slug", "version", "icon", "description", "kind", "adom")}
+    if not body["kind"]:
+        body.pop("kind")
     tid = request.form.get("target_id") or ""
     body["target_id"] = int(tid) if tid.isdigit() else None
     try:
@@ -125,8 +205,11 @@ def settings(pid):
         flash(exc.message, "danger")
     else:
         projects.apply_patch(conn, row, patch, g.user.username)
-        audit("project.update", patch.get("slug", row["slug"]), id=pid)
-        flash("Project saved.", "success")
+        switched = patch.get("kind") and patch["kind"] != row["kind"]
+        audit("project.update", patch.get("slug", row["slug"]), id=pid,
+              **({"kind": f"{row['kind']} -> {patch['kind']}"} if switched else {}))
+        flash(("Project saved. It is now a %s: %s" % (patch["kind"], kinds.SWITCH_NOTE))
+              if switched else "Project saved.", "success")
     return redirect(url_for("projects.overview", pid=pid))
 
 

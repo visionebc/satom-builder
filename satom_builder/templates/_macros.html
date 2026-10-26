@@ -9,7 +9,39 @@
 {%- endmacro %}
 
 {% macro kind_badge(kind) -%}
-<span class="fw-badge {{ {'app': 'fw-badge-primary', 'view': 'fw-badge-info', 'widget': 'fw-badge-secondary'}.get(kind, 'fw-badge-secondary') }}">{{ kind }}</span>
+<span class="fw-badge {{ {'app': 'fw-badge-primary', 'view': 'fw-badge-info', 'widget': 'fw-badge-secondary'}.get(kind, 'fw-badge-secondary') }}" title="{{ KINDS.GUIDE.get(kind, {}).get('what', '') }}">{{ kind }}</span>
+{%- endmacro %}
+
+{# The three kinds side by side, with the rule of thumb (satom_builder.kinds). #}
+{% macro kind_guide(open=False) -%}
+<details class="sb-kind-guide" {{ 'open' if open }}>
+  <summary class="sb-help"><i class="bi bi-question-circle me-1"></i>View, widget or app: which one?</summary>
+  <div class="sb-kind-grid mt-2">
+  {% for k in KINDS.ORDER %}{% set g = KINDS.GUIDE[k] %}
+    <div class="sb-kind-card" data-kind="{{ k }}">
+      <div><i class="bi {{ g.icon }} me-1"></i><strong>{{ g.label }}</strong></div>
+      <div class="sb-help">{{ g.what }}</div>
+      <div class="sb-help mt-1"><strong>For:</strong> {{ g.use_for }}. <em>{{ g.example }}</em></div>
+    </div>
+  {% endfor %}
+  </div>
+  <p class="sb-help mt-2 mb-0"><strong>Rule of thumb:</strong> {{ KINDS.RULE }}</p>
+</details>
+{%- endmacro %}
+
+{# Kind as radio cards: the choice IS the explanation. #}
+{% macro kind_choice(current, name='kind', prefix='kind') -%}
+<div class="sb-kind-grid" role="radiogroup" aria-label="Kind">
+{% for k in KINDS.ORDER %}{% set g = KINDS.GUIDE[k] %}
+  <label class="sb-kind-card sb-kind-option" for="{{ prefix }}-{{ k }}">
+    <input class="form-check-input me-1" type="radio" name="{{ name }}" id="{{ prefix }}-{{ k }}" value="{{ k }}" {{ 'checked' if current == k }}>
+    <i class="bi {{ g.icon }} me-1"></i><strong>{{ g.label }}</strong>
+    <div class="sb-help">{{ g.what }}</div>
+    <div class="sb-help mt-1"><strong>For:</strong> {{ g.use_for }}. <em>{{ g.example }}</em></div>
+  </label>
+{% endfor %}
+</div>
+<p class="sb-help mt-1 mb-0"><strong>Rule of thumb:</strong> {{ KINDS.RULE }}</p>
 {%- endmacro %}
 
 {% macro problems(list) -%}
@@ -17,3 +49,9 @@
 <ul class="sb-problems mb-0">{% for p in list %}<li><span class="sb-where">{{ p.where }}</span> {{ p.message }}</li>{% endfor %}</ul>
 {% endif %}
 {%- endmacro %}
+
+{# What a project is for, on hover or focus: an eye icon carrying its description. #}
+{% macro about(text) -%}
+{% if text %}<span class="sb-about" tabindex="0" role="img" title="{{ text }}" aria-label="What it is for: {{ text }}"><i class="bi bi-eye"></i></span>{% endif %}
+{%- endmacro %}
+

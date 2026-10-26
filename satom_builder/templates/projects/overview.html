@@ -5,6 +5,7 @@
 <div id="sb-project" data-pid="{{ p.id }}" data-kind="{{ p.kind }}" data-has-target="{{ '1' if target and has_token else '0' }}">
 <div class="fw-page-header">
   <h1 class="fw-page-title"><i class="bi {{ p.icon }} me-2"></i>{{ p.name }} {{ m.kind_badge(p.kind) }}
+    {{ m.about(p.description) }}
     <span class="sb-mono sb-help ms-2">{{ p.slug }} {{ p.version }}</span></h1>
   <div class="d-flex flex-wrap gap-2">
     <a class="btn btn-sm btn-fw-primary" href="{{ url_for('editor.edit', pid=p.id) }}"><i class="bi bi-pencil-square me-1"></i>Open editor</a>
@@ -31,6 +32,7 @@
         <div class="fw-alert fw-alert-warning">You have no SATOM token for <strong>{{ target.name }}</strong>: add yours under <a href="{{ url_for('me.tokens') }}">My tokens</a>. Everything the Builder does there runs with your token, your RBAC and your ADOM.</div>
       {% else %}
         <p class="sb-help mb-2">Target <strong>{{ target.name }}</strong> ({{ target.base_url }}). Validation runs SATOM's own rules: locally from the rules pack, and again on SATOM.</p>
+        {% if where %}<p class="mb-2" id="sb-where"><span class="fw-badge fw-badge-{{ 'warning' if where.warning else 'info' }}">Installs in: {{ where.shown if where.mode == 'legacy' else ('Global' if where.shown == 'global' else 'ADOM ' ~ where.shown) }}{{ ' (auto)' if where.mode == 'auto' else (' (set)' if where.mode == 'override' else '') }}</span> <span class="sb-help">{{ where.reason }}</span></p>{% endif %}
       {% endif %}
       <div class="sb-actions">
         <button class="btn btn-sm btn-outline-primary" data-sb-action="check" {{ 'disabled' if not (target and has_token) }}><i class="bi bi-check2-square me-1"></i>Validate locally</button>
@@ -121,7 +123,16 @@
         <div class="col-md-3"><label class="form-label" for="f-version">Version</label>
           <input class="form-control sb-mono" id="f-version" name="version" value="{{ p.version }}" required></div>
         <div class="col-md-3"><label class="form-label" for="f-icon">Icon</label>
-          <input class="form-control sb-mono" id="f-icon" name="icon" value="{{ p.icon }}" required></div>
+          <input class="form-control sb-mono" id="f-icon" name="icon" value="{{ p.icon }}" required data-icon-picker></div>
+        <div class="col-12" id="f-kind-box"><span class="form-label d-block">Kind</span>
+          {{ m.kind_choice(p.kind, prefix='f-kind') }}
+          <div class="sb-help mt-1" id="f-kind-note">{{ KINDS.SWITCH_NOTE }}</div></div>
+        <div class="col-12"><label class="form-label" for="f-adom">SATOM ADOM</label>
+          <select class="form-select" id="f-adom" name="adom" aria-describedby="f-adom-help">
+            <option value="" {{ 'selected' if not adom }}>Auto — from the datasets it reads{% if where and where.mode == 'auto' %} (now {{ 'Global' if where.shown == 'global' else 'ADOM ' ~ where.shown }}){% endif %}</option>
+            {% for a in adoms %}<option value="{{ a }}" {{ 'selected' if adom == a }}>{{ 'Global' if a == 'global' else 'ADOM ' ~ a }}</option>{% endfor %}
+          </select>
+          <div class="sb-help" id="f-adom-help">{% if where %}{{ where.reason }}{% if where.warning %} <span class="text-danger">{{ where.warning }}</span>{% endif %}{% else %}Where it installs in SATOM: Auto follows the product datasets it reads (two products: Global).{% endif %}</div></div>
         <div class="col-12"><label class="form-label" for="f-target">SATOM target</label>
           <select class="form-select" id="f-target" name="target_id">
             <option value="">— none —</option>

@@ -62,8 +62,12 @@
         <div class="ed-field"><label class="form-label ed-label" for="ed-name">Name</label><input class="form-control form-control-sm" id="ed-name" maxlength="200"></div>
         <div class="ed-field"><label class="form-label ed-label" for="ed-slug-input">Slug</label><input class="form-control form-control-sm ed-mono" id="ed-slug-input" spellcheck="false" aria-describedby="ed-slug-help"><div class="form-text ed-help" id="ed-slug-help">lowercase letters, digits and -</div></div>
         <div class="ed-field"><label class="form-label ed-label" for="ed-version-input">Version</label><input class="form-control form-control-sm ed-mono" id="ed-version-input" placeholder="1.0.0" aria-describedby="ed-version-help"><div class="form-text ed-help" id="ed-version-help">X.Y.Z</div></div>
-        <div class="ed-field"><label class="form-label ed-label" for="ed-icon">Icon</label><input class="form-control form-control-sm ed-mono" id="ed-icon" placeholder="bi-puzzle" aria-describedby="ed-icon-help"><div class="form-text ed-help" id="ed-icon-help">a Bootstrap icon class</div></div>
+        <div class="ed-field"><label class="form-label ed-label" for="ed-icon">Icon</label><input class="form-control form-control-sm ed-mono" id="ed-icon" placeholder="bi-puzzle" aria-describedby="ed-icon-help" data-icon-picker><div class="form-text ed-help" id="ed-icon-help">a Bootstrap icon class</div></div>
         <div class="ed-field"><label class="form-label ed-label" for="ed-description">Description</label><input class="form-control form-control-sm" id="ed-description" maxlength="500"></div>
+      </div>
+      <div class="ed-field ed-kind-field" id="ed-kind-field">
+        <span class="form-label ed-label">Kind: <strong>{{ KINDS.label(project.get("kind")) }}</strong></span>
+        <div class="form-text ed-help">{{ KINDS.GUIDE.get(project.get("kind"), {}).get("what", "") }} <a href="/projects/{{ project.get("id") }}#f-kind-box">Change the kind</a> (project settings) — {{ KINDS.RULE }}</div>
       </div>
       <div class="ed-field ed-adom-field" id="ed-adom-field" hidden>
         <label class="form-label ed-label" for="ed-adom">Installs in (SATOM ADOM)</label>

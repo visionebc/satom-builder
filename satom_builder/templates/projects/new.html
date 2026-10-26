@@ -10,13 +10,9 @@
     <label class="form-label" for="name">Name</label>
     <input class="form-control" id="name" name="name" value="{{ form.name }}" required maxlength="200">
   </div>
-  <div class="col-md-4">
-    <label class="form-label" for="kind">Kind</label>
-    <select class="form-select" id="kind" name="kind">
-      {% for k, label in [('app', 'App (form, diagram, stores, connections)'), ('view', 'View (a page)'), ('widget', 'Widget (a dashboard tile)')] %}
-      <option value="{{ k }}" {{ 'selected' if form.kind == k }}>{{ label }}</option>
-      {% endfor %}
-    </select>
+  <div class="col-12">
+    <span class="form-label d-block">Kind</span>
+    {{ m.kind_choice(form.kind) }}
   </div>
   <div class="col-md-4">
     <label class="form-label" for="slug">Slug</label>
@@ -29,7 +25,7 @@
   </div>
   <div class="col-md-3">
     <label class="form-label" for="icon">Icon</label>
-    <input class="form-control sb-mono" id="icon" name="icon" value="{{ form.icon }}" pattern="bi-[a-z0-9-]{1,28}">
+    <input class="form-control sb-mono" id="icon" name="icon" value="{{ form.icon }}" pattern="bi-[a-z0-9-]{1,28}" data-icon-picker>
   </div>
   <div class="col-md-3">
     <label class="form-label" for="target_id">SATOM target</label>
@@ -38,9 +34,17 @@
       {% for t in targets %}<option value="{{ t.id }}" {{ 'selected' if form.target_id == t.id|string }}>{{ t.name }}</option>{% endfor %}
     </select>
   </div>
+  <div class="col-md-6">
+    <label class="form-label" for="adom">SATOM ADOM</label>
+    <select class="form-select" id="adom" name="adom" aria-describedby="adom-help">
+      <option value="" {{ 'selected' if not form.adom }}>Auto — from the datasets it reads</option>
+      {% for a in adoms %}<option value="{{ a }}" {{ 'selected' if form.adom == a }}>{{ 'Global' if a == 'global' else 'ADOM ' ~ a }}</option>{% endfor %}
+    </select>
+    <div class="sb-help" id="adom-help">Where it installs in SATOM. Auto: the ADOM of the product datasets it reads (FortiGate datasets only: FortiGate; two products: Global). Fix it here if you already know. Changeable later.</div>
+  </div>
   <div class="col-12">
     <label class="form-label" for="description">Description</label>
-    <textarea class="form-control" id="description" name="description" maxlength="500" rows="2">{{ form.description }}</textarea>
+    <textarea class="form-control" id="description" name="description" maxlength="500" rows="2" placeholder="What it is for: shown in the project list (eye icon)">{{ form.description }}</textarea>
   </div>
   <div class="col-12">
     <button class="btn btn-fw-primary" type="submit">Create project</button>

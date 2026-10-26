@@ -7,6 +7,29 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Added
 
+- **View, widget or app: explained where you choose, and changeable.**
+  Requested: "let me change a project from app to view, but how does anyone
+  know the difference? Put it in SATOM and in the Builder: why a search is
+  not an app". New project offers the three kinds as cards -- what each is,
+  what it is for, an example -- with the rule of thumb: *show or search what
+  SATOM already knows: a view (or a widget on a dashboard); do something --
+  create, change, call another system, ask for approval: an app*. The project
+  settings change the kind (the draft is kept; only the new kind's parts are
+  packaged; the stale check is dropped); the editor says the kind and links
+  there; the kind badge carries the explanation; an app asked for a search
+  tells you to switch it to a view. New projects start as a view.
+- **Search and filters on Projects** (server-side): text over name, slug and
+  description, kind, target, ADOM (where each project installs) and last
+  check, with a count and Clear.
+- **The SATOM ADOM is a field of the project**: New project and the settings
+  offer Auto (from the datasets it reads), Global or an ADOM; the project page
+  says where it installs and why; the list has an ADOM column.
+- **Icon picker**: every icon field opens a searchable grid of the 2,048
+  Bootstrap icons a plugin may use (`/projects/icons.json`, read from the
+  vendored font); typing the name still works.
+- **What a project is for, on hover**: an eye icon next to its name (list and
+  project page) shows its description.
+
 - **Every project installs in the right SATOM ADOM, and nobody has to pick
   it.** Requested: "nowhere in the Builder does it say I have to choose the
   ADOM; and what if I want something from two ADOMs, like every firewall

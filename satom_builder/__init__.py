@@ -65,9 +65,11 @@ def create_app(overrides: dict | None = None) -> Flask:
     def _globals():
         # csrf_value is a string; templates use it. ``csrf_token`` stays callable for
         # pages that call it, and a view may pass ``csrf_token`` as a string.
+        from . import kinds
         return {"csrf_token": security.csrf_token, "csrf_value": security.csrf_token(),
                 "current_user": g.get("user"),
-                "csp_nonce": g.get("csp_nonce", ""), "app_version": __version__}
+                "csp_nonce": g.get("csp_nonce", ""), "app_version": __version__,
+                "KINDS": kinds}
 
     @app.template_filter("datetime")
     def _datetime(ts):

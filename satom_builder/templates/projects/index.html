@@ -12,18 +12,42 @@
     <a class="btn btn-sm btn-fw-primary" href="{{ url_for('projects.new') }}"><i class="bi bi-plus-lg me-1"></i>New project</a>
   </div>
 </div>
+<form class="fw-card sb-filters" method="get" action="{{ url_for('projects.index') }}" role="search" aria-label="Find projects">
+  <div class="fw-card-body d-flex flex-wrap gap-2 align-items-end">
+    {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+    <div class="flex-grow-1" style="min-width: 220px"><label class="form-label" for="pf-q">Search</label>
+      <input class="form-control form-control-sm" type="search" id="pf-q" name="q" value="{{ f.q }}" placeholder="Name, slug or description"></div>
+    <div><label class="form-label" for="pf-kind">Kind</label>
+      <select class="form-select form-select-sm" id="pf-kind" name="kind"><option value="">Any</option>
+        {% for k in KINDS.ORDER %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ KINDS.GUIDE[k].label }}</option>{% endfor %}</select></div>
+    <div><label class="form-label" for="pf-target">Target</label>
+      <select class="form-select form-select-sm" id="pf-target" name="target"><option value="">Any</option>
+        {% for t in targets %}<option value="{{ t.id }}" {{ 'selected' if f.target == t.id|string }}>{{ t.name }}</option>{% endfor %}
+        <option value="none" {{ 'selected' if f.target == 'none' }}>No target</option></select></div>
+    <div><label class="form-label" for="pf-adom">ADOM</label>
+      <select class="form-select form-select-sm" id="pf-adom" name="adom"><option value="">Any</option>
+        {% for a in adoms %}<option value="{{ a }}" {{ 'selected' if f.adom == a }}>{{ 'Global' if a == 'global' else a }}</option>{% endfor %}</select></div>
+    <div><label class="form-label" for="pf-check">Last check</label>
+      <select class="form-select form-select-sm" id="pf-check" name="check"><option value="">Any</option>
+        {% for c, l in [('ok', 'Passed'), ('problems', 'Problems'), ('never', 'Never checked')] %}<option value="{{ c }}" {{ 'selected' if f.check == c }}>{{ l }}</option>{% endfor %}</select></div>
+    <button class="btn btn-sm btn-fw-primary" type="submit"><i class="bi bi-search me-1"></i>Filter</button>
+    {% if filtered %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.index', all=1 if show_all else None) }}">Clear</a>{% endif %}
+    <span class="sb-help ms-auto" id="pf-count" aria-live="polite">{{ items|length }} of {{ total }} project(s)</span>
+  </div>
+</form>
 <div class="fw-card">
-  {% if rows %}
+  {% if items %}
   <div class="table-responsive">
-  <table class="table fw-table mb-0 align-middle">
-    <thead><tr><th>Name</th><th>Last check</th><th>Kind</th><th>Version</th><th>Target</th><th>Slug</th>{% if show_all %}<th>Owner</th>{% endif %}<th>Updated</th></tr></thead>
+  <table class="table fw-table mb-0 align-middle" id="sb-projects">
+    <thead><tr><th>Name</th><th>Last check</th><th>Kind</th><th>ADOM</th><th>Version</th><th>Target</th><th>Slug</th>{% if show_all %}<th>Owner</th>{% endif %}<th>Updated</th></tr></thead>
     <tbody>
-    {% for r in rows %}
+    {% for it in items %}{% set r = it.r %}
       {% set lc = r.last_check|fromjson %}
       <tr>
-        <td><i class="bi {{ r.icon }} me-1"></i><a href="{{ url_for('projects.overview', pid=r.id) }}">{{ r.name }}</a></td>
+        <td><i class="bi {{ r.icon }} me-1"></i><a href="{{ url_for('projects.overview', pid=r.id) }}">{{ r.name }}</a> {{ m.about(r.description) }}</td>
         <td>{% if lc and lc.result %}{% if lc.result.ok %}<span class="fw-badge fw-badge-success">ok</span>{% else %}<span class="fw-badge fw-badge-danger">{{ (lc.result.problems or [])|length }} problem(s)</span>{% endif %} <span class="sb-help">{{ lc.source }}</span>{% else %}<span class="sb-help">never</span>{% endif %}</td>
         <td>{{ m.kind_badge(r.kind) }}</td>
+        <td>{% if it.where %}<span title="{{ it.where.reason }}">{{ 'Global' if it.adom == 'global' else it.adom }}</span>{% if it.where.mode == 'override' %} <span class="sb-help">(set)</span>{% endif %}{% elif it.adom %}{{ it.adom }} <span class="sb-help">(set)</span>{% else %}<span class="sb-help">—</span>{% endif %}</td>
         <td class="sb-mono">{{ r.version }}</td>
         <td>{{ tnames.get(r.target_id, '—') }}</td>
         <td class="sb-mono">{{ r.slug }}</td>
@@ -34,6 +58,8 @@
     </tbody>
   </table>
   </div>
+  {% elif filtered %}
+  <div class="fw-card-body"><p class="mb-0">No project matches these filters. <a href="{{ url_for('projects.index', all=1 if show_all else None) }}">Clear them</a>.</p></div>
   {% else %}
   <div class="fw-card-body">
     <div class="fw-empty-state">
@@ -44,4 +70,5 @@
   </div>
   {% endif %}
 </div>
+<div class="fw-card"><div class="fw-card-body">{{ m.kind_guide() }}</div></div>
 {% endblock %}

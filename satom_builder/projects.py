@@ -199,10 +199,14 @@ def to_api(conn, row) -> dict:
 
 def create(conn, owner_id: int, *, name: str, kind: str, slug: str, version: str = "1.0.0",
            icon: str = "bi-puzzle", description: str = "", target_id=None,
-           draft: dict | None = None) -> int:
+           draft: dict | None = None, adom: str = "") -> int:
     patch = validate_patch({"name": name, "kind": kind, "slug": slug, "version": version,
                             "icon": icon, "description": description,
-                            "target_id": target_id}, conn)
+                            "target_id": target_id, "adom": adom}, conn)
+    if draft is None:
+        draft = empty_draft(patch["kind"])
+    if patch.get("adom"):
+        draft = dict(draft, adom=patch["adom"])
     t = db.now()
     cur = conn.execute(
         "INSERT INTO projects (owner_id, name, kind, slug, version, icon, description, "
@@ -221,6 +225,15 @@ def apply_patch(conn, row, patch: dict, by_user: str) -> None:
     for k in ("files", "datasets", "params", "app", "adom"):
         if k in patch:
             draft[k] = patch[k]
+    switched = "kind" in patch and patch["kind"] != row["kind"]
+    if switched:
+        # the other kind's work stays in the draft (it is not packaged); the new
+        # kind gets the containers its editor expects
+        fresh = empty_draft(patch["kind"])
+        for k in ("files", "datasets", "params"):
+            draft.setdefault(k, fresh[k])
+        if patch["kind"] == "app" and not (draft.get("app") or {}).get("app"):
+            draft["app"] = fresh["app"]
     conn.execute("INSERT INTO project_revisions (project_id, at, by_user, data) "
                  "VALUES (?,?,?,?)", (row["id"], db.now(), by_user,
                                        db.dumps({k: row[k] for k in row.keys()
@@ -232,6 +245,8 @@ def apply_patch(conn, row, patch: dict, by_user: str) -> None:
     args = list(cols.values())
     conn.execute(f"UPDATE projects SET {sets + ', ' if sets else ''}draft = ?, "
                  "updated_at = ? WHERE id = ?", args + [db.dumps(draft), db.now(), row["id"]])
+    if switched:
+        set_last_check(conn, row["id"], "", None)   # a check of the other kind says nothing
 
 
 def set_last_check(conn, pid: int, source: str, result) -> None:

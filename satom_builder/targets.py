@@ -190,6 +190,23 @@ def elsewhere_of(lib: dict) -> dict:
 
 
 GLOBAL = "global"
+#: the ADOMs SATOM ships with: what the pickers offer before a library says more
+DEFAULT_ADOMS = ("global", "fortiweb", "fortigate", "fortiadc", "fortianalyzer",
+                 "fortiauthenticator")
+
+
+def known_adoms(conn, user_id: int) -> list[str]:
+    """Global first, then every ADOM this author's cached libraries say their
+    tokens reach (contract section 17); SATOM's own list before any library."""
+    seen: list[str] = []
+    for r in conn.execute("SELECT data FROM library_cache WHERE user_id = ? AND key = 'library'",
+                          (user_id,)):
+        for a in reach_of(db.loads(r["data"], {}) or {}).get("adoms") or []:
+            if a not in seen:
+                seen.append(a)
+    if not seen:
+        seen = list(DEFAULT_ADOMS)
+    return [GLOBAL] + sorted(a for a in seen if a != GLOBAL)
 
 
 def install_adom(kind: str, datasets, override: str, lib: dict) -> dict:
