@@ -57,6 +57,10 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   reproduce: it is not walked again (that flagged a correct app). A path
   written as one expression (`{{ '/api/...' + ip }}`) gets its literal form
   in the problem.
+- **The app note says how to loop and what to put in base_url.** Every lab
+  run lost a round to an empty `base_url` and another to a counter written
+  as `"0"`: the note now gives the loop (`"{{ 0 }}"`, `{{ items[i] }}`,
+  `{{ i + 1 }}`), a placeholder URL, and "read before writing".
 - **Test answers in the device's own shape.** A connection pinned to SATOM's
   API library is answered as the product answers: FortiGate
   `{"results": [...], "status": "success", ...}` (measured on fgt02),

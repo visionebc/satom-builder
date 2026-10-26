@@ -154,7 +154,14 @@ APP_DATASET_NOTE = (
     "the app: satom_appliances -> read the group from the FortiGate -> create what is "
     "missing (an address per IP, then the group's members) -> an automation that runs it "
     "daily; a second run must change nothing. A FortiGate's API is reached through an "
-    "HTTP connection (no secret in the draft: SATOM asks for the token on import).")
+    "HTTP connection (no secret in the draft: SATOM asks for the token on import; "
+    "\"base_url\" is required -- the device's https://address when the request names it, "
+    "else a placeholder such as https://fortigate.invalid that the administrator replaces "
+    "on SATOM). One step per item is a loop: a set step \"i\" = \"{{ 0 }}\" (NOT \"0\": "
+    "a literal is text), a decision {{ i }} less {{ items | length }}, a set step "
+    "\"item\" = \"{{ items[i] }}\", the work, a set step \"i\" = \"{{ i + 1 }}\" back to "
+    "the decision. Read before writing: GET the entry (its error arrow = 404 = missing) and "
+    "create it only then.")
 
 
 #: SATOM's plugin sandbox (plugin_sandbox._SANDBOX: ImmutableSandboxedEnvironment,
