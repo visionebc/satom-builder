@@ -569,7 +569,7 @@ def run(adapter, pack, snapshot: dict, project: dict, author_text: str, assets: 
         except package.PackageError as exc:
             last = {"ok": False, "problems": [{"where": "package", "message": str(exc)}],
                     "warnings": []}
-        pin_problems += fortinet_apis.lint(candidate, snapshot)
+        pin_problems += fortinet_apis.lint(candidate, snapshot) + fortinet_apis.fields_lint(built)
         if pin_problems:
             last = dict(last, ok=False,
                         problems=list(last.get("problems") or []) + pin_problems)

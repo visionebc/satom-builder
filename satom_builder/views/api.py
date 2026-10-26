@@ -111,16 +111,25 @@ def _local_check(conn, row) -> tuple[dict | None, str]:
         return res, ""
     except (NotReady, SatomError, rules.RulesError) as exc:
         return None, getattr(exc, "message", None) or str(exc)
-    res = pack.check(data, snap, "builder")
-    if row["kind"] == "app":
-        built = projects.to_api(conn, row)
-        extra = fortinet_apis.lint(built, snap)
-        t2 = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
-        built, _ = targets.library_completion(conn, t2, g.user.id)(built)
-        probs = fortinet_apis.hints(list(res.get("problems") or []), built) + extra
-        res = dict(res, problems=probs, ok=bool(res.get("ok")) and not extra)
+    res = _builder_problems(conn, row, snap, pack.check(data, snap, "builder"))
     _publisher_hint(res)
     return res, ""
+
+
+def _builder_problems(conn, row, snap, res: dict) -> dict:
+    """SATOM's check result plus the Builder's own problems about Fortinet
+    calls (an unpinned Fortinet path, a body field the library endpoint does
+    not have) and the nearest endpoints of a wrong path -- the same on a save
+    and on the Check button (2026-10-26: Check showed only SATOM's rules)."""
+    if row["kind"] != "app":
+        return res
+    built = projects.to_api(conn, row)
+    extra = fortinet_apis.lint(built, snap)
+    t2 = targets.get_target(conn, row["target_id"]) if row["target_id"] is not None else None
+    built, _ = targets.library_completion(conn, t2, g.user.id)(built)
+    extra += fortinet_apis.fields_lint(built)
+    probs = fortinet_apis.hints(list(res.get("problems") or []), built) + extra
+    return dict(res, problems=probs, ok=bool(res.get("ok")) and not extra)
 
 
 def _where(conn, row) -> dict | None:
@@ -294,7 +303,7 @@ def project_check(pid):
         pack = targets.rules_pack(conn, t, g.user.id, snap)
         try:
             _, data = _build(conn, row, snap)
-            res = pack.check(data, snap, "builder")
+            res = _builder_problems(conn, row, snap, pack.check(data, snap, "builder"))
         except package.PackageError as exc:
             res = {"ok": False, "problems": [{"where": "package", "message": str(exc)}],
                    "warnings": [], "summary": {}}

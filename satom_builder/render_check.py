@@ -233,6 +233,84 @@ def _second_run(candidate: dict):
     return hit or None
 
 
+def _stateful(candidate: dict) -> dict:
+    """``{connection: product}`` to walk on a device that keeps its writes:
+    an app on a schedule that writes to a connection pinned to SATOM's API
+    library (FortiAnalyzer's JSON-RPC is answered as before)."""
+    body = candidate.get("app") or {}
+    if not body.get("automations"):
+        return {}
+    from . import fortinet_apis
+    pinned = {c: p for c, p, _b in fortinet_apis.pins(candidate) if p in testdata.SIM_PRODUCTS}
+    writes = set()
+    for n in ((body.get("app") or {}).get("graph") or {}).get("nodes") or []:
+        if isinstance(n, dict) and n.get("kind") == "api_call":
+            prm = n.get("params") or {}
+            if _call_method(prm) in ("POST", "PUT", "PATCH", "DELETE"):
+                writes.add(str(prm.get("connection") or ""))
+    return {c: p for c, p in pinned.items() if c in writes}
+
+
+#: how each product's list read looks, for the message
+_LIST_SHAPE = {"fortigate": '{"results": [rows]}', "fortiweb": '{"results": [rows]}',
+               "fortiadc": '{"payload": [rows]} -- payload IS the list',
+               "fortiauthenticator": '{"objects": [rows], "meta": {...}}'}
+
+
+def _twice_on_devices(pack, candidate, snapshot, test, inputs, sims: dict, note: str):
+    """Walk the app on devices that start empty and keep what it writes, then
+    again on the same devices: tomorrow's run. A POST the second run repeats
+    means what the app read did not show what it wrote -- it would add the same
+    thing every day. A walk that cannot finish on an empty device (it needs an
+    object that exists on the real one) says so in the note and decides nothing."""
+    def walk(states):
+        t = json.loads(json.dumps(test))
+        for slug, product in sims.items():
+            t.setdefault("connections", {}).setdefault(slug, {})["device"] = {
+                "product": product, "state": states.get(slug) or {}}
+        req = runtime.build_request("app", candidate, snapshot, t, {"inputs": inputs})
+        return runtime.call(pack, req, timeout=runtime.RUN_TIMEOUT)
+    try:
+        first = walk({})
+    except runtime.RuntimeUnavailable as exc:
+        return [], note + "; on a device that keeps its writes: not run (%s)" % exc.message
+    if first.get("status") not in ("done", "waiting"):
+        return [], note + "; on an empty device it stops (%s): it needs what the real device "                           "has, so the repeat run is not checked" % str(first.get("error") or "")[:160]
+    devs = first.get("devices") or {}
+    try:
+        second = walk({s: (d or {}).get("state") for s, d in devs.items()})
+    except runtime.RuntimeUnavailable as exc:
+        return [], note + "; the repeat run was not: " + exc.message
+    done = {s: {(w[0], w[1], w[3]) for w in (d or {}).get("writes") or [] if w[0] == "POST"}
+            for s, d in devs.items()}
+    again = []
+    for slug, d in (second.get("devices") or {}).items():
+        for w in (d or {}).get("writes") or []:
+            if w[0] == "POST" and (w[0], w[1], w[3]) in done.get(slug, set()):
+                again.append((slug, w))
+    if not again and second.get("status") in ("done", "waiting"):
+        wrote = sum(len((d or {}).get("writes") or []) for d in devs.values())
+        return [], note + ("; on a device that keeps its writes: %d write(s), and the repeat run "
+                           "writes nothing it already wrote" % wrote)
+    if again:
+        slug, w = again[0]
+        product = sims.get(slug, "")
+        msg = ("it runs on a schedule, and on a device that keeps what it is told the second "
+               "run POSTs again what the first wrote (connection %s: POST %s %s). What it reads "
+               "before writing did not show its own write -- on the device it would add the same "
+               "thing every day. Read the list the device answers (%s) and compare with that; a "
+               "default([]) over a path that does not exist hides it."
+               % (slug, w[1], w[3][:200], _LIST_SHAPE.get(product, "the list")))
+    else:
+        bad = next((x for x in reversed(second.get("steps") or []) if x.get("outcome") == "error"),
+                   None)
+        msg = ("it runs on a schedule, and on a device that keeps what it is told the second run "
+               "fails%s: %s. It must find what it wrote the day before and skip it."
+               % (" at step %s" % bad.get("key") if bad else "",
+                  str(second.get("error") or (bad or {}).get("detail") or "")[:300]))
+    return [{"where": "app.graph", "rule": "builder.second_run", "message": msg}], ""
+
+
 def make_app(pack, snapshot: dict):
     """-> ``check(candidate) -> (problems, note)`` for apps: SATOM's rules
     check the diagram's shape, not what it does -- a step that reads a
@@ -260,7 +338,11 @@ def make_app(pack, snapshot: dict):
             n = len(res.get("steps") or [])
             again = _second_run(candidate)
             if again is None:
-                return [], "ran on test data: %s after %d step(s)" % (status, n)
+                sims = _stateful(candidate)
+                if not sims:
+                    return [], "ran on test data: %s after %d step(s)" % (status, n)
+                return _twice_on_devices(pack, candidate, snapshot, test, inputs, sims,
+                                         "ran on test data: %s after %d step(s)" % (status, n))
             test2 = json.loads(json.dumps(test))
             for slug in again:
                 c = test2.setdefault("connections", {}).setdefault(slug, {})

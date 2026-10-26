@@ -299,8 +299,25 @@ def _used_ops(project: dict, conn: dict, ops: list[dict]) -> list[dict]:
 _ROW = {"name": "item-1", "q_origin_key": "item-1"}
 
 
-def library_answer(product: str, method: str) -> dict:
+def _sample(kind: str):
+    return [] if kind in ("list", "array") else 0 if kind in ("integer", "int", "float") else ""
+
+
+def library_answer(product: str, method: str, fields: dict | None = None) -> dict:
+    """The test answer of one library endpoint; with *fields* (``{name:
+    type}``, SATOM's library), a read's row holds every field, so an app that
+    reads a field the device does not have fails its test run."""
     read = method == "GET"
+    if fields and read:
+        row = {k: _sample(t) for k, t in list(fields.items())[:120]}
+        row.update({"name": "item-1", "mkey": "item-1"} if product in ("fortiadc", "fortiweb")
+                   else {"name": "item-1"})
+        base = library_answer(product, method)
+        for k in ("results", "payload", "objects"):
+            if isinstance(base.get(k), list):
+                base[k] = [dict(row, **({"q_origin_key": "item-1"} if product == "fortigate" else
+                                        {"id": 1} if product == "fortiauthenticator" else {}))]
+        return base
     if product == "fortigate":
         body = {"http_method": method, "status": "success", "http_status": 200,
                 "vdom": "root", "path": "test", "name": "test"}
@@ -324,6 +341,192 @@ def library_answer(product: str, method: str) -> dict:
     return [{"id": 1, "name": "item-1"}] if read else {"ok": True}
 
 
+# --------------------------------------------------------------------------
+# a pinned connection as a device that remembers what it is told
+# --------------------------------------------------------------------------
+#: lab, 2026-10-26 (FortiADC E2E, found by the session reviewing it): an app
+#: read the pool's members as ``pool_resp.payload.member | default([])`` --
+#: ``payload`` IS the list -- so it never saw the member it had added and would
+#: add it again every day. Canned answers cannot show that; a walk on a device
+#: that keeps its writes, run twice, does (render_check.make_app). The answers
+#: are the ones measured with GETs on 2026-10-26 (missing entry: FortiGate 404,
+#: FortiWeb 500 errcode -3, FortiADC 200 ``{"payload": null}``,
+#: FortiAuthenticator 404); a write's answer is SATOM's clients' reading.
+SIM_PRODUCTS = ("fortigate", "fortiweb", "fortiadc", "fortiauthenticator")
+
+
+def _canon(v) -> str:
+    return json.dumps(v, sort_keys=True, default=str)
+
+
+class Device:
+    """``request(method, path, query, body)`` -> ``{"status", "body"}``.
+    ``state`` = ``{collection: {key: row}}``; ``writes`` = every write as
+    ``[method, collection, key, canonical body]``."""
+
+    def __init__(self, product: str, state: dict | None = None):
+        self.product = product
+        self.state = json.loads(json.dumps(state or {}))
+        self.writes: list = []
+        # ids it hands out continue after the ones it already holds
+        held = [int(k) for rows in self.state.values() if isinstance(rows, dict)
+                for k in rows if str(k).isdigit()]
+        self._n = max(held + [1000])
+
+    def _auto(self) -> str:
+        self._n += 1
+        return str(self._n)
+
+    def _write(self, method, coll, key, body):
+        self.writes.append([method, coll, str(key), _canon(body)])
+
+    def request(self, method: str, path: str, query=None, body=None) -> dict:
+        method = (method or "GET").upper()
+        q = {str(k): str(v) for k, v in (query or {}).items()} if isinstance(query, dict) else {}
+        path, _s, qs = str(path or "").partition("?")
+        for part in qs.split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                q.setdefault(k, v)
+        fn = getattr(self, "_" + self.product.replace("forti", ""), None)
+        return fn(method, path.rstrip("/") or "/", q, body) if fn else None
+
+    # FortiGate: /api/v2/cmdb/<a>/<b>[/<key>[/<list>[/<item>]]]
+    def _gate(self, m, path, q, body):
+        segs = [s for s in path.split("/") if s]
+        if segs[:3] != ["api", "v2", "cmdb"] or len(segs) < 5:
+            return None
+        obj, rest = "/".join(segs[3:5]), segs[5:]
+        ok = {"http_method": m, "status": "success", "http_status": 200, "vdom": "root"}
+        miss = {"status": 404, "body": {"http_method": m, "status": "error", "http_status": 404}}
+        if len(rest) in (0, 1):
+            coll, key = obj, (rest[0] if rest else None)
+        elif len(rest) in (2, 3):
+            if obj not in self.state or rest[0] not in self.state[obj]:
+                return miss
+            coll, key = "%s/%s/%s" % (obj, rest[0], rest[1]), (rest[2] if len(rest) == 3 else None)
+        else:
+            return None
+        rows = self.state.setdefault(coll, {})
+        b = body if isinstance(body, dict) else {}
+        if m == "GET":
+            if key is None:
+                return {"status": 200, "body": dict(ok, results=list(rows.values()))}
+            return {"status": 200, "body": dict(ok, results=[rows[key]])} if key in rows else miss
+        if m == "POST" and key is None:
+            name = str(b.get("name") or b.get("q_origin_key") or self._auto())
+            self._write(m, coll, name, b)
+            if name in rows:
+                return {"status": 500, "body": {"http_method": "POST", "status": "error",
+                                                "http_status": 500, "error": -5,
+                                                "cli_error": "entry already exists"}}
+            rows[name] = dict(b, name=name)
+            return {"status": 200, "body": dict(ok, mkey=name)}
+        if key is None:
+            return {"status": 405, "body": {"status": "error", "http_status": 405}}
+        self._write(m, coll, key, b)
+        if key not in rows:
+            return miss
+        if m == "DELETE":
+            rows.pop(key)
+        else:
+            rows[key] = dict(rows[key], **b)
+        return {"status": 200, "body": dict(ok, mkey=key)}
+
+    # FortiWeb: the key as ?mkey=, a sub-table (…-list) under ?mkey=<parent>&sub_mkey=
+    def _web(self, m, path, q, body):
+        if not path.startswith("/api/v2.0/"):
+            return None
+        b = body.get("data") if isinstance(body, dict) and set(body) == {"data"} else body
+        b = b if isinstance(b, dict) else {}
+        sub = path.endswith("-list") or "sub_mkey" in q
+        coll = path + ("?mkey=" + q.get("mkey", "") if sub else "")
+        key = q.get("sub_mkey") if sub else q.get("mkey")
+        rows = self.state.setdefault(coll, {})
+        nf = {"status": 500, "body": {"results": {"errcode": -3,
+                                                  "message": "The entry is not found."}}}
+        if m == "GET":
+            if not key:
+                return {"status": 200, "body": {"results": list(rows.values())}}
+            return {"status": 200, "body": {"results": rows[key]}} if key in rows else nf
+        if m == "POST":
+            key = str(b.get("name") or b.get("id") or self._auto())
+            self._write(m, coll, key, b)
+            if key in rows:
+                return {"status": 500, "body": {"results": {"errcode": -5,
+                                                            "message": "A duplicate entry "
+                                                                       "already exists."}}}
+            rows[key] = dict(b, **({"name": key} if not sub else {"id": key}))
+            return {"status": 200, "body": {"results": {"errcode": 0}}}
+        self._write(m, coll, key, b)
+        if not key or key not in rows:
+            return nf
+        if m == "DELETE":
+            rows.pop(key)
+        else:
+            rows[key] = dict(rows[key], **b)
+        return {"status": 200, "body": {"results": {"errcode": 0}}}
+
+    # FortiADC: the key as ?mkey=, a child table under ?pkey=<parent entry>
+    def _adc(self, m, path, q, body):
+        if not path.startswith("/api/"):
+            return None
+        coll = path + ("?pkey=" + q["pkey"] if q.get("pkey") else "")
+        key = q.get("mkey")
+        rows = self.state.setdefault(coll, {})
+        b = body if isinstance(body, dict) else {}
+        if m == "GET":
+            if not key:
+                return {"status": 200, "body": {"payload": list(rows.values())}}
+            return {"status": 200, "body": {"payload": rows.get(key)}}
+        if m == "POST":
+            key = str(b.get("mkey") or self._auto())
+            self._write(m, coll, key, b)
+            if key in rows:
+                return {"status": 200, "body": {"payload": -15}}
+            rows[key] = dict(b, mkey=key)
+            return {"status": 200, "body": {"payload": 0}}
+        self._write(m, coll, key, b)
+        if not key or key not in rows:
+            return {"status": 200, "body": {"payload": -1}}
+        if m == "DELETE":
+            rows.pop(key)
+        else:
+            rows[key] = dict(rows[key], **b)
+        return {"status": 200, "body": {"payload": 0}}
+
+    # FortiAuthenticator: /api/v1/<resource>/[<id>/]
+    def _authenticator(self, m, path, q, body):
+        segs = [s for s in path.split("/") if s]
+        if segs[:2] != ["api", "v1"] or len(segs) not in (3, 4):
+            return None
+        coll, key = "/api/v1/%s/" % segs[2], (segs[3] if len(segs) == 4 else None)
+        rows = self.state.setdefault(coll, {})
+        b = body if isinstance(body, dict) else {}
+        if m == "GET":
+            if key is None:
+                objs = list(rows.values())
+                return {"status": 200, "body": {"meta": {"limit": 20, "next": None, "offset": 0,
+                                                         "previous": None,
+                                                         "total_count": len(objs)},
+                                                "objects": objs}}
+            return {"status": 200, "body": rows[key]} if key in rows else {"status": 404,
+                                                                             "body": None}
+        if m == "POST" and key is None:
+            key = self._auto()
+            self._write(m, coll, key, b)
+            rows[key] = dict(b, id=int(key))
+            return {"status": 201, "body": rows[key]}
+        self._write(m, coll, key, b)
+        if key is None or key not in rows:
+            return {"status": 404, "body": None}
+        if m == "DELETE":
+            rows.pop(key)
+            return {"status": 204, "body": None}
+        rows[key] = dict(rows[key], **b)
+        return {"status": 200, "body": rows[key]}
+
+
 def connection_template(project: dict, conn: dict) -> dict:
     if conn.get("kind") == "postgres":
         return {"queries": [{"match": "SELECT", "rows": [{"id": 1, "name": "row-1"}]}]}
@@ -338,7 +541,8 @@ def connection_template(project: dict, conn: dict) -> dict:
     for op in ops:
         path = re.sub(r"\{[^}/]+\}", "*", str(op.get("path") or "/"))
         method = str(op.get("method") or "GET").upper()
-        body = library_answer(product, method) if product else (
+        flds = (op.get("fields") or {}).get("fields") if isinstance(op.get("fields"), dict) else None
+        body = library_answer(product, method, flds) if product else (
             [{"id": 1, "name": "item-1"}] if method == "GET" else {"ok": True})
         responses.append({"method": str(op.get("method") or "GET").upper(), "path": path,
                           "status": 200, "body": body})

@@ -260,11 +260,21 @@ def _install(world: _World, req: dict, libdir: str) -> None:
     def conn_test(slug):
         return (world.test.get("connections") or {}).get(slug) or {}
 
+    # a connection whose test data says "device" is a device that keeps its
+    # writes (testdata.Device): render_check walks an app on it twice
+    world.devices = {slug: TD.Device(str(c["device"].get("product") or ""),
+                                     c["device"].get("state"))
+                     for slug, c in (world.test.get("connections") or {}).items()
+                     if isinstance(c, dict) and isinstance(c.get("device"), dict)}
+
     def http_request(d, secret, method="GET", path="", *, query=None, body=None, headers=None,
                      **_kw):
         if d.get("kind") != "http":
             raise H.ConnectionError_("%s is not an HTTP connection" % d.get("slug"))
-        ans = TD.http_answer(conn_test(d.get("slug")), method, path)
+        dev = world.devices.get(d.get("slug"))
+        ans = dev.request(method, path, query, body) if dev is not None else None
+        if ans is None:
+            ans = TD.http_answer(conn_test(d.get("slug")), method, path)
         st = int(ans["status"])
         world.note("connection %s %s %s -> %s (test data)" % (d.get("slug"), method,
                                                               path or "/", st))
@@ -451,6 +461,8 @@ def op_walk(pack: str, req: dict, TD) -> dict:
             "vars": json.loads(json.dumps(SA._mask(ctx.vars, secrets), default=str)),
             "waiting": SA._mask(waiting, secrets), "error": SA._mask(res.get("error") or "", secrets),
             "problems": [], "changes": world.changes(), "scripts": world.scripts,
+            "devices": {slug: {"state": dv.state, "writes": dv.writes}
+                        for slug, dv in getattr(world, "devices", {}).items()},
             "log": world.log}
 
 

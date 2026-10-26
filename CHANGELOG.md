@@ -21,6 +21,16 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
   another API's `/api/v1/...` or `/jsonrpc`. A JSON-RPC `get` counts as a read
   for the second walk. Editor: a FortiAnalyzer step searches the urls and
   writes the picked one into the body.
+- **Fields are checked, not just paths, and an app is run twice on a device
+  that remembers** (lab E2E, FortiADC: the AI wrote a pool member as
+  `{"member_ip", "member_port"}` and read `payload.member | default([])`, and
+  every check passed). The endpoints a diagram calls carry SATOM's fields; a
+  body with a field the device does not have, or a FortiADC create without what
+  SATOM knows it needs (`real_server_id`: a member references a real server),
+  is a problem that names the real ones -- also on the Check button, which
+  showed only SATOM's rules. Test answers hold the real fields, and an app on a
+  schedule that writes is walked again on a simulated device that keeps its
+  writes: adding the same thing on the second day is a problem.
 
 - **The AI calls a Fortinet device with SATOM's real endpoints, and a wrong
   path is refused.** Requested: "the API pack should go to the Builder, so it

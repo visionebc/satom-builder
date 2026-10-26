@@ -204,7 +204,10 @@ PIN_NOTE = (
     "FortiADC: the key is ?mkey=<key> on the same path, a child table is its own path with "
     "the parent entry in ?pkey= (a pool member: POST /api/load_balance_pool_child_pool_member"
     "?pkey=<pool>), and a missing entry answers HTTP 200 {\"payload\": null} -- not the error "
-    "arrow: test the payload. FortiAuthenticator: only the methods listed (a single object has "
+    "arrow: test the payload; a pool member references an existing real server by name "
+    "(POST /api/load_balance_real_server {\"mkey\": <name>, \"address\": <ip>} first, "
+    "then the member {\"real_server_id\": <name>, \"port\": ...}), it is not an inline "
+    "ip:port. FortiAuthenticator: only the methods listed (a single object has "
     "no /{id}/). FortiAnalyzer (\"jsonrpc\": true below): every call is POST /jsonrpc with "
     "body {\"method\": \"get\", \"params\": [{\"url\": \"<url>\"}]} and each url "
     "must be one listed (any ADOM as adom/<name>); the answer is HTTP 200 also when it failed: "
@@ -473,4 +476,268 @@ def lint(project: dict, snapshot: dict | None) -> list[dict]:
                                    "\"api_version\": \"<build>\" (see SATOM's API library)."
                                    % (n.get("key"), (prm.get("method") or "GET").upper(), path,
                                       NAMES[product], slug or "(none)", product)})
+    return out
+
+
+# --------------------------------------------------------------------------
+# the fields of the endpoints a diagram calls (SATOM's API library, contract
+# sections 14 and 19.1)
+# --------------------------------------------------------------------------
+#: lab, 2026-10-26: gpt-oss wrote a FortiADC pool member as
+#: {"member_ip", "member_port"} on the right path; nothing checked a field and
+#: the test answers held only mkey/name, so the app "passed" and would have
+#: failed on the device. The library knows each endpoint's fields where a
+#: device showed them: the endpoints a diagram calls carry them in the
+#: completed project, a body that sends another field is a problem naming the
+#: real ones, and the test answers hold them.
+MAX_FIELD_LOOKUPS = 12
+#: keys every product accepts beside its fields
+_ALWAYS = frozenset(("mkey", "name", "q_origin_key", "id", "_id", "seq", "vdom"))
+_KEYSEG = re.compile(r"^\{.*\}$")
+
+
+def endpoint_of(product: str, path: str, endpoints: list) -> tuple[str, str] | None:
+    """``(library endpoint, list field)`` a request path (or a FortiAnalyzer
+    url) reaches: the endpoint whose url the path starts with -- a key or a
+    template after it is the entry, a word after the key a FortiGate child
+    list; a FortiADC child table ``/api/<parent>_child_<t>`` is ``<parent>``'s
+    list ``<t>``. None when the library lists no such endpoint."""
+    p = _TPL.sub("{}", str(path or "").split("?", 1)[0]).rstrip("/")
+    by: dict = {}
+    for e in endpoints or []:
+        if not isinstance(e, dict) or e.get("verdict") == "absent":
+            continue
+        name = str(e.get("endpoint") or "")
+        urn = str(e.get("urn") or "").rstrip("/")
+        if not urn and product == "fortianalyzer" and name:
+            urn = "/cli/global/" + name.replace(".", "/")
+        if urn:
+            by[urn] = name
+    m = re.match(r"^/api/(.+?)_child_([a-z0-9_]+)$", p)
+    if m and "/api/" + m.group(1) in by:
+        return by["/api/" + m.group(1)], m.group(2)
+    segs = [s for s in p.split("/") if s]
+    for n in range(len(segs), 0, -1):
+        urn = "/" + "/".join(segs[:n])
+        if urn not in by:
+            continue
+        # after the url: <key>[/<list>[/<item>]] -- the key may be literal
+        # (/addrgrp/FWB-Group/member), so it is read by position
+        tail = segs[n:]
+        if len(tail) > 3 or (len(tail) >= 2 and _KEYSEG.match(tail[1])):
+            return None
+        return by[urn], (tail[1] if len(tail) >= 2 else "")
+    return None
+
+
+def field_spec(info: dict, list_field: str) -> dict:
+    """``{"status", "fields": {name: type}}`` of a library fields answer;
+    for a list field, its children (types unknown)."""
+    flds = (info or {}).get("fields") or {}
+    status = str((info or {}).get("status") or "")
+    if list_field:
+        spec = flds.get(list_field)
+        kids = spec.get("children") if isinstance(spec, dict) else None
+        out = ({"status": status, "fields": {str(c): "" for c in kids}} if kids
+               else {"status": "unknown", "fields": {}})
+    else:
+        out = {"status": status, "fields": {str(k): str((v or {}).get("type") or "")
+                                            for k, v in flds.items() if isinstance(v, dict)}}
+    create = (info or {}).get("create")
+    if isinstance(create, dict) and create.get("fields"):
+        out["create"] = create
+    return out
+
+
+def _nodes(project: dict) -> list:
+    return [n for n in ((_body(project).get("app") or {}).get("graph") or {}).get("nodes") or []
+            if isinstance(n, dict) and n.get("kind") == "api_call"]
+
+
+def _json_of(raw):
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        import json as _j
+        return _j.loads(raw) if isinstance(raw, str) and raw.strip() else None
+    except ValueError:
+        return None
+
+
+def _rpc_urls(prm: dict) -> list[str]:
+    doc = _json_of(prm.get("body"))
+    params = doc.get("params") if isinstance(doc, dict) else None
+    return [str(p.get("url")) for p in params or [] if isinstance(p, dict) and p.get("url")]
+
+
+def _op_for(entry: dict, method: str, path: str) -> dict | None:
+    want = [s for s in _TPL.sub("\x00", str(path or "").split("?", 1)[0]).split("/") if s]
+    for o in entry.get("operations") or []:
+        if not isinstance(o, dict) or str(o.get("method") or "").upper() != method:
+            continue
+        have = [s for s in str(o.get("path") or "").split("/") if s]
+        if len(have) == len(want) and all(w == "\x00" or h.startswith("{") or w == h
+                                          for w, h in zip(want, have)):
+            return o
+    return None
+
+
+def attach_fields(project: dict, endpoints, fields, others=None) -> dict:
+    """The (completed) project with, on each library operation its diagram
+    calls, ``"fields": {endpoint, list, status, fields, build}`` from SATOM's
+    library (a FortiAnalyzer call: ``"rpc_fields"`` per url). ``endpoints(product,
+    build)`` -> the build's endpoint list, ``fields(product, build, endpoint)``
+    -> its fields answer, ``others(product)`` -> the product's other measured
+    builds, newest first: when the pinned build never showed an endpoint's
+    fields (fortiadc11 8.0.4 has no pool), the newest build that did speaks
+    for it (``build`` says which). Changes the project in place."""
+    if project.get("kind") != "app":
+        return project
+    pinned = {c: (p, b) for c, p, b in pins(project)}
+    apis = {(a.get("slug"), str(a.get("version"))): a for a in _body(project).get("apis") or []
+            if isinstance(a, dict)}
+    seen: dict = {}
+    for n in _nodes(project):
+        prm = n.get("params") or {}
+        conn = str(prm.get("connection") or "")
+        if conn not in pinned:
+            continue
+        product, build = pinned[conn]
+        entry = apis.get((product, build))
+        if entry is None:
+            continue
+        method = str(prm.get("method") or "GET").upper()
+        op = _op_for(entry, method, prm.get("path"))
+        if op is None:
+            continue
+        targets = _rpc_urls(prm) if op.get("rpc") else [str(prm.get("path") or "")]
+        for t in targets:
+            hit = endpoint_of(product, t, endpoints(product, build))
+            if hit is None:
+                continue
+            key = (product, build) + hit
+            if key not in seen:
+                if len(seen) >= MAX_FIELD_LOOKUPS:
+                    continue
+                seen[key] = _fields_of(product, build, hit, fields, others)
+            rec = seen[key]
+            if rec is None:
+                continue
+            if op.get("rpc"):
+                op.setdefault("rpc_fields", {})[t] = rec
+            else:
+                op["fields"] = rec
+    return project
+
+
+def _fields_of(product: str, build: str, hit: tuple, fields, others) -> dict | None:
+    """The fields of *hit* on the pinned build or, when it never showed them,
+    on the newest build that did; plus what a create needs where SATOM knows
+    it (a FortiADC child table: asked by its own name, contract 19.1)."""
+    create = None
+    if product == "fortiadc" and hit[1]:
+        try:
+            create = field_spec(fields(product, build, "%s_child_%s" % hit), "").get("create")
+        except Exception:  # noqa: BLE001 -- a hint, never a blocker
+            create = None
+    tried = [build] + [b for b in (others(product) if others else []) if b != build][:3]
+    for b in tried:
+        try:
+            spec = field_spec(fields(product, b, hit[0]), hit[1])
+        except Exception:  # noqa: BLE001 -- a field list is a help, never a blocker
+            continue
+        create = create or spec.get("create")
+        if spec["status"] == "measured" and spec["fields"]:
+            return dict(spec, endpoint=hit[0], list=hit[1], build=b,
+                        **({"create": create} if create else {}))
+    if create:
+        return {"status": "unknown", "fields": {}, "endpoint": hit[0], "list": hit[1],
+                "build": build, "create": create}
+    return None
+
+
+def _sent_keys(product: str, prm: dict, url: str = "") -> list[str]:
+    """The field names a write step's body sends (FortiWeb wraps them in
+    ``data``, FortiAnalyzer in ``params[].data``); keys built by a template
+    are not names."""
+    doc = _json_of(prm.get("body"))
+    if product == "fortianalyzer":
+        for p in (doc.get("params") if isinstance(doc, dict) else None) or []:
+            if isinstance(p, dict) and str(p.get("url")) == url:
+                doc = p.get("data")
+                break
+        else:
+            doc = None
+    elif product == "fortiweb" and isinstance(doc, dict) and set(doc) == {"data"}:
+        doc = doc["data"]
+    if isinstance(doc, list) and doc and isinstance(doc[0], dict):
+        doc = doc[0]
+    if not isinstance(doc, dict):
+        return []
+    return [k for k in doc if isinstance(k, str) and not _TPL.search(k)]
+
+
+_WRITES = ("POST", "PUT", "PATCH")
+_RPC_WRITES = ("set", "add", "update", "replace")
+
+
+def fields_lint(project: dict) -> list[dict]:
+    """``builder.library_fields``: a write step whose body sends a field the
+    endpoint does not have, on a build whose fields a device showed."""
+    if project.get("kind") != "app":
+        return []
+    pinned = {c: (p, b) for c, p, b in pins(project)}
+    apis = {(a.get("slug"), str(a.get("version"))): a for a in _body(project).get("apis") or []
+            if isinstance(a, dict)}
+    out = []
+    for n in _nodes(project):
+        prm = n.get("params") or {}
+        conn = str(prm.get("connection") or "")
+        if conn not in pinned:
+            continue
+        product, build = pinned[conn]
+        entry = apis.get((product, build)) or {}
+        method = str(prm.get("method") or "GET").upper()
+        op = _op_for(entry, method, prm.get("path"))
+        if op is None:
+            continue
+        checks = []
+        if op.get("rpc"):
+            doc = _json_of(prm.get("body"))
+            verb = str(doc.get("method") or "").lower() if isinstance(doc, dict) else ""
+            if verb in _RPC_WRITES:
+                checks = [(u, (op.get("rpc_fields") or {}).get(u)) for u in _rpc_urls(prm)]
+        elif method in _WRITES:
+            checks = [(str(prm.get("path") or ""), op.get("fields"))]
+        for url, rec in checks:
+            if not rec:
+                continue
+            sent = _sent_keys(product, prm, url)
+            create = rec.get("create") or {}
+            need = [f for f in create.get("fields") or [] if f.get("required")]
+            missing = [f for f in need if f.get("key") not in sent]
+            if method == "POST" and missing and _json_of(prm.get("body")) is not None:
+                out.append({"where": "app.graph", "rule": "builder.library_fields", "message": (
+                    "%s: POST %s does not send %s, which %s requires to create one (verified "
+                    "on %s %s by SATOM): %s%s" % (
+                        n.get("key"), url[:160], ", ".join(f["key"] for f in missing),
+                        NAMES[product], NAMES[product], create.get("verified_on") or "",
+                        "; ".join("%s = %s" % (f["key"], f.get("help") or "required")
+                                  for f in missing),
+                        (". " + create["hint"]) if create.get("hint") else ""))})
+            if rec.get("status") != "measured" or not rec.get("fields"):
+                continue
+            names = rec["fields"]
+            bad = [k for k in sent if k not in names and k not in _ALWAYS]
+            if not bad:
+                continue
+            what = rec["endpoint"] + ((" list " + rec["list"]) if rec.get("list") else "")
+            real = sorted(k for k in names if not k.startswith(("_", "q_")))
+            seen_on = rec.get("build") or build
+            out.append({"where": "app.graph", "rule": "builder.library_fields", "message": (
+                "%s: %s %s sends %s, which %s %s does not have (SATOM's API library%s); its "
+                "fields: %s" % (n.get("key"), method, url[:160], ", ".join(bad[:10]),
+                                NAMES[product], what,
+                                ", as a device of %s showed them" % seen_on,
+                                ", ".join(real[:40]) + (" ..." if len(real) > 40 else "")))})
     return out

@@ -7,6 +7,8 @@ token, so it reflects that author's RBAC and ADOM.
 """
 from __future__ import annotations
 
+import re
+
 from flask import current_app
 
 from . import db, rules
@@ -188,7 +190,51 @@ def library_completion(conn, target_row, user_id: int):
             raise FA.PinError("the project has no SATOM connection")
         return lambda project: FA.complete(project, none)
     resolve = catalog_resolver(conn, target_row, user_id)
-    return lambda project: FA.complete(project, resolve)
+
+    def endpoints(product, build):
+        return library_endpoints(conn, target_row, user_id, product, build)
+
+    def fields(product, build, endpoint):
+        return library_fields(conn, target_row, user_id, product, build, endpoint)
+
+    def others(product):
+        rows = FA.library_builds(library(conn, target_row, user_id)).get(product) or []
+        return [str(b.get("version")) for b in sorted(
+            (b for b in rows if isinstance(b, dict) and b.get("measured")),
+            key=lambda b: [(0, int(x)) if x.isdigit() else (1, x)
+                           for x in re.split(r"[._+-]", str(b.get("version") or ""))],
+            reverse=True)]
+
+    def complete(project):
+        out, problems = FA.complete(project, resolve)
+        if fields_ok(out):
+            out = FA.attach_fields(out, endpoints, fields, others)
+        return out, problems
+    return complete
+
+
+def fields_ok(project: dict) -> bool:
+    from . import fortinet_apis as FA
+    return project.get("kind") == "app" and bool(FA.pins(project))
+
+
+def library_endpoints(conn, target_row, user_id: int, product: str, version: str) -> list:
+    """The endpoints of one library build (contract section 14), cached like
+    the library; ``[]`` when SATOM cannot serve them."""
+    try:
+        j = cached_library(conn, target_row, user_id, "endpoints:%s:%s" % (product, version),
+                           lambda c: c.library_build(product, version))
+    except SatomError:
+        return []
+    return [e for e in j.get("endpoints") or [] if isinstance(e, dict)]
+
+
+def library_fields(conn, target_row, user_id: int, product: str, version: str,
+                   endpoint: str) -> dict:
+    """One library endpoint's fields on one build (contract section 14), cached."""
+    return cached_library(conn, target_row, user_id,
+                          "fields:%s:%s:%s" % (product, version, endpoint[:150]),
+                          lambda c: c.library_build(product, version, endpoint))
 
 
 def library_prompt(conn, target_row, user_id: int, project: dict, text: str,
