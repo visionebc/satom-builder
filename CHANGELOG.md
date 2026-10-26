@@ -142,6 +142,13 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ### Fixed
 
+- **A repair round of an app no longer runs out of room on a 32k-context
+  model.** An app's prompt carried every step kind in full (47k characters,
+  ~12k tokens) on top of the author guide that already lists them; with
+  gpt-oss (32k context) round 2 of a request was cut off ("The output was too
+  long"). The prompt now sends each step's summary, whether it writes and its
+  parameters' help -- a1's target summary went from 65,541 to 29,651
+  characters.
 - **The AI sent every request that touched SATOM's data to a view.** The
   note an app's prompt carries (2026-10-25) said "an app cannot read SATOM's
   data: answer that it is a view's job" -- true for "show the rules that use
