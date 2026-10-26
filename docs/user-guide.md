@@ -149,13 +149,15 @@ To act on SATOM's devices, start the diagram with **Read SATOM's appliances** (t
 
 ### 4.3.2 Calling a Fortinet device: SATOM's API library
 
-A connection that talks to a FortiGate, FortiWeb, FortiADC or FortiAuthenticator is pinned (**Connections** tab › *API Catalog version*) to a firmware build of **SATOM's API library** — "FortiGate 8.0.1 — SATOM's API library (in the fleet)"; the builds your fleet runs come first. From then on:
+A connection that talks to a FortiGate, FortiWeb, FortiADC, FortiAuthenticator or FortiAnalyzer is pinned (**Connections** tab › *API Catalog version*) to a firmware build of **SATOM's API library** — "FortiGate 8.0.1 — SATOM's API library (in the fleet)"; the builds your fleet runs come first. From then on:
 
 - the package carries **SATOM's** list of that build's endpoints (about 3,700 for a FortiGate), added by the Builder when it builds the package — the draft keeps only the pin, and a list typed into the draft (or written by the AI) is dropped;
 - a **Call an API** step searches those endpoints ("METHOD path": type *addrgrp member*) and sets the method and the path;
-- SATOM's rules refuse a step whose method and path are not one of them — in the check, in a test run and on import — and the problem names the nearest real endpoints.
+- SATOM's rules refuse a step whose method and path are not one of them — in the check, in a test run and on import — and the problem names the nearest real endpoints;
+- the **fields** are checked too, where a device showed SATOM the endpoint's fields: a body with a field the endpoint does not have, or a FortiADC create without what SATOM knows it needs (a pool member references a real server by `real_server_id`; an entry is named in `mkey`), is a problem that lists the real ones — on a save, on **Check** and in Generate; the test answers hold those fields;
+- an app on a schedule that writes is run twice more on a **simulated device that keeps what it is told** (FortiGate, FortiWeb, FortiADC, FortiAuthenticator): first empty, then with what the first run wrote. Adding the same thing again on the second run is a problem — tomorrow's run would duplicate it — and the message lists what the second run decided.
 
-FortiGate tables are `/api/v2/cmdb/<path>` and `<path>/{<key>}`; a list inside an entry has its own endpoint: `POST /api/v2/cmdb/firewall/addrgrp/{name}/member` with `{"name": "<address>"}` adds one address to a group and keeps the others, where a `PUT` of the group replaces the whole list. FortiAnalyzer is not offered (JSON-RPC). Needs a SATOM that serves its API library as catalog versions; an older one says so on the pin.
+FortiGate tables are `/api/v2/cmdb/<path>` and `<path>/{<key>}`; a list inside an entry has its own endpoint: `POST /api/v2/cmdb/firewall/addrgrp/{name}/member` with `{"name": "<address>"}` adds one address to a group and keeps the others, where a `PUT` of the group replaces the whole list. A FortiADC child table is its own path with the parent entry in `?pkey=` (a pool member: `POST /api/load_balance_pool_child_pool_member?pkey=<pool>`), and a missing FortiADC entry answers HTTP 200 `{"payload": null}`, not an error. A FortiAuthenticator resource offers only the methods it was measured to allow. FortiAnalyzer is one endpoint, `POST /jsonrpc`: the body's `params[].url` must be one of the build's urls (the step's search box lists them and writes the picked one into the body). Needs a SATOM that serves its API library as catalog versions; an older one says so on the pin.
 
 ### 4.4 From the Builder to production
 
