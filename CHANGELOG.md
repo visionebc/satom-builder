@@ -45,6 +45,14 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 - **An automation's empty value for a required field is flagged** in the
   Automations tab, as SATOM now refuses it (the scheduled run would stop at
   "is required" every time).
+- **A scheduled app that writes to a Fortinet device must survive its
+  second run.** The lab's armed run on fgt02 added FortiWeb 192.0.2.82 to the
+  group, and the next run failed with HTTP 500: the address existed. An app
+  with automations that POSTs on a connection pinned to SATOM's API library
+  is walked twice; on the second walk every POST answers as FortiOS does for
+  an existing entry, and a failure (`builder.second_run`) tells the AI to read
+  first (GET `<path>/{key}`: a 404 takes the error arrow) and create only
+  what is missing.
 - **Test data for a connection pinned to a large API version.** One test
   answer per endpoint was 3,715 answers for a FortiGate build, past the 200 a
   test-data connection holds: generating test data failed with 400. A large

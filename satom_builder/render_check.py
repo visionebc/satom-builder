@@ -187,6 +187,29 @@ def app_inputs(candidate: dict) -> dict:
     return out
 
 
+#: what FortiOS answers a POST of an entry that exists (the second run)
+ALREADY_EXISTS = {"method": "POST", "path": "**", "status": 500,
+                  "body": {"http_method": "POST", "status": "error", "http_status": 500,
+                           "error": -5, "cli_error": "entry already exists"}}
+
+
+def _second_run(candidate: dict):
+    """The connections to answer "already exists" on a second walk, or None:
+    only an app on a schedule (it runs again with the same devices) that
+    writes to a connection pinned to SATOM's API library."""
+    body = candidate.get("app") or {}
+    if not body.get("automations"):
+        return None
+    from . import fortinet_apis
+    pinned = {c for c, _p, _b in fortinet_apis.pins(candidate)}
+    used = {str((n.get("params") or {}).get("connection") or "")
+            for n in ((body.get("app") or {}).get("graph") or {}).get("nodes") or []
+            if isinstance(n, dict) and n.get("kind") == "api_call"
+            and str((n.get("params") or {}).get("method") or "GET").upper() == "POST"}
+    hit = sorted(pinned & used)
+    return hit or None
+
+
 def make_app(pack, snapshot: dict):
     """-> ``check(candidate) -> (problems, note)`` for apps: SATOM's rules
     check the diagram's shape, not what it does -- a step that reads a
@@ -212,7 +235,32 @@ def make_app(pack, snapshot: dict):
         status = res.get("status")
         if status in ("done", "waiting"):
             n = len(res.get("steps") or [])
-            return [], "ran on test data: %s after %d step(s)" % (status, n)
+            again = _second_run(candidate)
+            if again is None:
+                return [], "ran on test data: %s after %d step(s)" % (status, n)
+            test2 = json.loads(json.dumps(test))
+            for slug in again:
+                c = test2.setdefault("connections", {}).setdefault(slug, {})
+                c["responses"] = [dict(ALREADY_EXISTS)] + list(c.get("responses") or [])
+            req2 = runtime.build_request("app", candidate, snapshot, test2, {"inputs": inputs})
+            try:
+                res2 = runtime.call(pack, req2, timeout=runtime.RUN_TIMEOUT)
+            except runtime.RuntimeUnavailable as exc:
+                return [], "ran once; the second run was not: " + exc.message
+            if res2.get("status") in ("done", "waiting"):
+                return [], ("ran on test data: %s after %d step(s), and again with every entry "
+                            "already on the device" % (status, n))
+            bad2 = next((x for x in reversed(res2.get("steps") or [])
+                         if x.get("outcome") == "error"), None)
+            return [{"where": "app.graph", "rule": "builder.second_run", "message": (
+                "it runs on a schedule, so it runs again tomorrow with the same devices -- and "
+                "that second run fails%s: %s. On a Fortinet device a POST of an entry that "
+                "already exists answers HTTP 500 (FortiOS: entry already exists). Read before "
+                "writing: GET <path>/{<key>} answers 404 (the step's error arrow, "
+                "last_response.status) when the entry is missing -- create only then; the same "
+                "for a list: GET <path>/{<key>}/<list>/{<item>} before POSTing the item."
+                % (" at step %s" % bad2.get("key") if bad2 else "",
+                   str(res2.get("error") or (bad2 or {}).get("detail") or "")[:300]))}], ""
         steps = res.get("steps") or []
         bad = next((s for s in reversed(steps) if s.get("outcome") == "error"), None)
         trail = " -> ".join("%s(%s)" % (s.get("key"), s.get("outcome")) for s in steps[-8:])

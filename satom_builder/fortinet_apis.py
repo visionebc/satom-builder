@@ -183,7 +183,10 @@ PIN_NOTE = (
     "\"path\": the path must be an endpoint below (prefix + directory/object; a table's "
     "entry is /{key}, a child list /{key}/<list>), or SATOM refuses the package. Put a "
     "template in a path segment for a value "
-    "(\"/api/v2/cmdb/firewall/addrgrp/{{ form.group }}/member\").")
+    "(\"/api/v2/cmdb/firewall/addrgrp/{{ form.group }}/member\"). An app on a schedule runs "
+    "again with the same devices, and a POST of an entry that exists fails (HTTP 500): read "
+    "first (GET <path>/{key}; a 404 takes the step's error arrow) and create only what is "
+    "missing -- the Builder runs it a second time to check.")
 
 
 def prompt_section(entries: dict, others: dict) -> dict:
