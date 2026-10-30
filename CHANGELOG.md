@@ -5,6 +5,23 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Sign-in tab for apps** (request: "this part must also be registered in the
+  Builder"). An app can carry its own **sign-in** in SATOM -- a page for
+  people without a SATOM console account who see that app and nothing else
+  (contract section 20). The tab adds rules for a directory connection of
+  the target SATOM (Active Directory, LDAP, RADIUS / FortiAuthenticator), for
+  SATOM's local accounts, or for a connection id typed by hand; per rule the
+  group DNs and LDAP filter, or the FortiAuthenticator groups, and whether a
+  SATOM authenticator code is required; then the Apps only profile and
+  whether new accounts wait for an administrator. It checks as you type with
+  SATOM's own rules and says which rules the target would leave out (a
+  connection it lacks or has with another kind). Never a server, an account
+  or a secret: those stay in SATOM, and the import brings the sign-in
+  switched off. Needs a SATOM newer than 4.6.0; on an older one the tab says
+  the app would be installed without it. The AI may write `"signin"` too
+  (a misplaced one is lifted into the app, like `automations`).
+
 ## [0.4.0] - 2026-10-26
 
 **Apps that act on a Fortinet device on a schedule, built against the device's

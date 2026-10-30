@@ -147,6 +147,7 @@ Automations need SATOM 4.5.0 or later on the target. In SATOM each automation be
 
 To act on SATOM's devices, start the diagram with **Read SATOM's appliances** (the devices with `name`, `kind`, `host`, `ip`…, filtered by product, e.g. every FortiWeb); in a test run it reads the test data's `fleet_appliances`. A target whose SATOM does not know automations yet says so on the tab.
 
+
 ### 4.3.2 Calling a Fortinet device: SATOM's API library
 
 A connection that talks to a FortiGate, FortiWeb, FortiADC, FortiAuthenticator or FortiAnalyzer is pinned (**Connections** tab › *API Catalog version*) to a firmware build of **SATOM's API library** — "FortiGate 8.0.1 — SATOM's API library (in the fleet)"; the builds your fleet runs come first. From then on:
@@ -158,6 +159,17 @@ A connection that talks to a FortiGate, FortiWeb, FortiADC, FortiAuthenticator o
 - an app on a schedule that writes is run twice more on a **simulated device that keeps what it is told** (FortiGate, FortiWeb, FortiADC, FortiAuthenticator): first empty, then with what the first run wrote. Adding the same thing again on the second run is a problem — tomorrow's run would duplicate it — and the message lists what the second run decided.
 
 FortiGate tables are `/api/v2/cmdb/<path>` and `<path>/{<key>}`; a list inside an entry has its own endpoint: `POST /api/v2/cmdb/firewall/addrgrp/{name}/member` with `{"name": "<address>"}` adds one address to a group and keeps the others, where a `PUT` of the group replaces the whole list. A FortiADC child table is its own path with the parent entry in `?pkey=` (a pool member: `POST /api/load_balance_pool_child_pool_member?pkey=<pool>`), and a missing FortiADC entry answers HTTP 200 `{"payload": null}`, not an error. A FortiAuthenticator resource offers only the methods it was measured to allow. FortiAnalyzer is one endpoint, `POST /jsonrpc`: the body's `params[].url` must be one of the build's urls (the step's search box lists them and writes the picked one into the body). Needs SATOM 4.5.0 or later, which serves its API library as catalog versions; an older one says so on the pin.
+
+### 4.3.3 Sign-in: people outside SATOM
+
+An app's **Sign-in** tab gives it its own sign-in page in SATOM, for people who have no SATOM console account — another team, a supplier. They sign in on the app's page and see that app and nothing else.
+
+- **Add rule**: pick a directory connection of the target SATOM (Active Directory, LDAP or RADIUS / FortiAuthenticator — the list comes from the target), *Local SATOM accounts*, or type the id of a connection and its kind. Rules are tried in order; use the arrows to reorder.
+- **Active Directory / LDAP**: the group DNs (one per line; member of any — AD counts nested groups) and an optional LDAP filter such as `(department=NOC)`. **RADIUS**: the group names the FortiAuthenticator sends (`Fortinet-Group-Name`). Empty = anyone the server accepts.
+- **Require a SATOM authenticator code**: a second factor set up at the first sign-in.
+- **Apps only profile** of the accounts a sign-in creates (by name; the target's are offered) and **New accounts wait for an administrator**.
+
+The package never carries a server, a bind account or a secret: the SATOM administrator keeps those in *Plugin Studio › Sign-in directories*. A rule whose connection the target lacks (or has with another kind) is shown as a note — the import leaves that rule out. On import the sign-in arrives **switched off**; an administrator turns it on in the app's Sign-in tab in SATOM once the app is published. An app that already has sign-in rules there keeps them. Needs a SATOM newer than 4.6.0 (rules `app.signin`, `app.signin_off`, `app.signin_connection`).
 
 ### 4.4 From the Builder to production
 

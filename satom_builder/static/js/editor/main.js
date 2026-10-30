@@ -25,8 +25,9 @@ import testrunTab from "./tabs/testrun.js";
 import databaseTab from "./tabs/database.js";
 import chatTab from "./tabs/chat.js";
 import automationsTab from "./tabs/automations.js";
+import signinTab from "./tabs/signin.js";
 
-const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, database: databaseTab, testrun: testrunTab, chat: chatTab, automations: automationsTab };
+const TABS = { form: formTab, diagram: diagramTab, actions: actionsTab, stores: storesTab, connections: connectionsTab, apis: apisTab, design: designTab, scripts: scriptsTab, raw: rawTab, files: filesTab, datasets: datasetsTab, params: paramsTab, preview: previewTab, testdata: testdataTab, database: databaseTab, testrun: testrunTab, chat: chatTab, automations: automationsTab, signin: signinTab };
 const $ = (id) => document.getElementById(id);
 const DRAFT_DELAY = 400;
 

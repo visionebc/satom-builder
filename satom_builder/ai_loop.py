@@ -51,8 +51,10 @@ Markdown around it. The object is the plugin draft, with these keys:
 - for a view or a widget: "files" = {"body.jinja": ..., "style.css": ...,
   "script.js": ...}, "datasets" = [dataset names], "params" = [param objects];
 - for an app: "app" = the app.json body {"app": {...}, "stores": [...],
-  "connections": [...], "apis": [...], "scripts": [...], "automations": [...]}
-  ("automations": when it runs on a schedule, see the author guide).
+  "connections": [...], "apis": [...], "scripts": [...], "automations": [...],
+  "signin": {...}} ("automations": when it runs on a schedule; "signin": only
+  when people without a SATOM account must sign in to it -- see the author
+  guide).
 
 Keys you leave out keep their current value. The Builder writes the kind,
 "format", "min_satom" and the file hashes of plugin.json itself: leave them
@@ -394,12 +396,12 @@ def parse_answer(text: str) -> dict:
 
 #: app.json keys a model sometimes writes next to "app" instead of inside it
 #: (gpt-oss, lab 2026-10-26: two of three rounds lost to it)
-APP_BODY_KEYS = ("stores", "connections", "apis", "scripts", "automations")
+APP_BODY_KEYS = ("stores", "connections", "apis", "scripts", "automations", "signin")
 
 
 def lift_app_parts(obj: dict, current: dict | None) -> dict:
     """An app answer's ``stores``/``connections``/``apis``/``scripts``/
-    ``automations`` written at the top level go INTO the app body: on top of
+    ``automations``/``signin`` written at the top level go INTO the app body: on top of
     the answer's own ``"app"``, or of the current draft's when the answer has
     none (so the diagram is not lost). A key the answer's ``"app"`` already
     has wins over the misplaced one."""

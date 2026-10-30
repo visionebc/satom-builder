@@ -143,6 +143,8 @@ def validate_patch(body, conn=None) -> dict:
         for k in ("stores", "connections", "apis", "scripts", "automations"):
             if k in v and not isinstance(v[k], list):
                 raise ShapeError(f"app.{k} must be a list.")
+        if "signin" in v and v["signin"] is not None and not isinstance(v["signin"], dict):
+            raise ShapeError("app.signin must be an object (rules, profile, require_approval).")
         for c in v.get("connections") or []:
             if isinstance(c, dict) and any(c.get(k) for k in SECRET_FIELDS):
                 raise ShapeError(f"Connection {c.get('slug', '?')!r} carries a secret. The "
