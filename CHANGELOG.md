@@ -5,6 +5,16 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-30
+
+**What your SATOM already has opens here, and an app can bring its own
+sign-in (both need SATOM 4.7.0).** *Projects › Open from SATOM* lists the
+target's Plugin Studio apps and Report Studio plugins and opens them as
+projects in one click; the editor's **Sign-in** tab gives an app a sign-in
+page in SATOM for people without a console account, against the target's
+AD, LDAP or FortiAuthenticator connections. With an older SATOM both say
+which release they need, and everything else works as in 0.4.0.
+
 ### Added
 - **Open from SATOM** (request: "I still don't see SATOM's plugins in the
   Builder; they should all be there"). *Projects › Open from SATOM* lists
