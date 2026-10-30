@@ -23,7 +23,7 @@ function ruleControls(r, i, pre, ctx, L) {
     const g = textarea(lines(r.radius_groups), { id: `${pre}-groups`, rows: 2, placeholder: "satom-app-users" });
     g.addEventListener("input", () => { r.radius_groups = unlines(g.value); ctx.changed(); });
     g.addEventListener("change", () => ctx.changed({ rerender: true, focus: g.id }));
-    out.push(field("The reply names any of these groups (one per line)", g, { help: "Fortinet-Group-Name in the FortiAuthenticator's Access-Accept. Empty = anyone the server accepts." }));
+    out.push(field("The reply names any of these groups (one per line)", g, { help: "Fortinet-Group-Name in the FortiAuthenticator's Access-Accept: it names a group that carries that RADIUS attribute and is in the group filter of the realm that accepted the user. Empty = anyone the server accepts." }));
   } else {
     out.push(h("p", { class: "ed-intro", text: "A local SATOM account's password. It may open the app only when the app is shared with it in SATOM." }));
   }

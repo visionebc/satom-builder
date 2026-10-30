@@ -62,6 +62,10 @@ The kind can be changed later in the project settings (**Kind**): the draft keep
 | SATOM ADOM | Where it installs in SATOM: **Auto** (the ADOM of the product datasets it reads; two products: Global), **Global** or an ADOM. Changeable in the settings. |
 | Description | Up to 500 characters: what the project is for. The list shows it behind the eye icon. |
 
+### Open from SATOM
+
+*Projects › Open from SATOM* lists what the target SATOM already has: every Plugin Studio app and the Report Studio plugins of your token's ADOM (all of them with a Global token). Each row says whether it is already one of your projects (*Open project*), *not yet*, or why the Builder cannot open it: a **script app** (its code is a Script Library script, edit it in SATOM), a **code plugin** (the Builder builds views, widgets and apps only), or a Report Studio plugin when your SATOM account is not a super-admin (SATOM's own export needs it). Tick what you want and **Open selected**, or **Open all**: each one is fetched as SATOM exports it — unsigned, connections without their secrets — and becomes a project on that target, as if you had adopted the exported file. Opening twice never duplicates: what is already your project is not fetched again. Needs SATOM 4.7.0 or later; an older SATOM says so, and *Adopt a package* still takes the file you export there.
+
 ### Adopt a package
 
 *Adopt a package* turns an existing `.satomplugin` file (a SATOM export, or a package built elsewhere) into a project. The file's format and member hashes are checked. A signature in it is dropped: when the Builder builds the package again, it signs it with this installation's key. Packages whose connections carry a secret are refused (see the promises above).
@@ -165,7 +169,7 @@ FortiGate tables are `/api/v2/cmdb/<path>` and `<path>/{<key>}`; a list inside a
 An app's **Sign-in** tab gives it its own sign-in page in SATOM, for people who have no SATOM console account — another team, a supplier. They sign in on the app's page and see that app and nothing else.
 
 - **Add rule**: pick a directory connection of the target SATOM (Active Directory, LDAP or RADIUS / FortiAuthenticator — the list comes from the target), *Local SATOM accounts*, or type the id of a connection and its kind. Rules are tried in order; use the arrows to reorder.
-- **Active Directory / LDAP**: the group DNs (one per line; member of any — AD counts nested groups) and an optional LDAP filter such as `(department=NOC)`. **RADIUS**: the group names the FortiAuthenticator sends (`Fortinet-Group-Name`). Empty = anyone the server accepts.
+- **Active Directory / LDAP**: the group DNs (one per line; member of any — AD counts nested groups) and an optional LDAP filter such as `(department=NOC)`. **RADIUS**: the group names the FortiAuthenticator sends (`Fortinet-Group-Name`). It sends one for a group that carries that RADIUS attribute **and** is in the group filter of the realm that accepted the user (the authentication profile of the RADIUS policy for SATOM); a group outside that filter sends nothing, even for a member (measured on FortiAuthenticator 8.0.3). Empty = anyone the server accepts.
 - **Require a SATOM authenticator code**: a second factor set up at the first sign-in.
 - **Apps only profile** of the accounts a sign-in creates (by name; the target's are offered) and **New accounts wait for an administrator**.
 

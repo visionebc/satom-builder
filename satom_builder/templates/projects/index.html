@@ -8,6 +8,7 @@
     {% if current_user.is_admin %}
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.index', all=None if show_all else 1) }}">{{ 'Only mine' if show_all else 'Everybody\'s' }}</a>
     {% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.from_satom') }}"><i class="bi bi-cloud-arrow-down me-1"></i>Open from SATOM</a>
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.adopt') }}"><i class="bi bi-box-arrow-in-down me-1"></i>Adopt a package</a>
     <a class="btn btn-sm btn-fw-primary" href="{{ url_for('projects.new') }}"><i class="bi bi-plus-lg me-1"></i>New project</a>
   </div>
@@ -65,7 +66,7 @@
     <div class="fw-empty-state">
       <div class="fw-empty-state-icon"><i class="bi bi-boxes"></i></div>
       <div class="fw-empty-state-title">No projects yet</div>
-      <div class="fw-empty-state-text">Start a view, a widget or a Plugin Studio app, or adopt an existing <span class="sb-mono">.satomplugin</span>.</div>
+      <div class="fw-empty-state-text">Start a view, a widget or a Plugin Studio app, <a href="{{ url_for('projects.from_satom') }}">open what your SATOM already has</a>, or adopt an existing <span class="sb-mono">.satomplugin</span>.</div>
     </div>
   </div>
   {% endif %}

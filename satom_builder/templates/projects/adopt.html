@@ -5,6 +5,7 @@
 <div class="fw-page-header"><h1 class="fw-page-title"><i class="bi bi-box-arrow-in-down me-2"></i>Adopt a package</h1></div>
 <div class="fw-card"><div class="fw-card-body">
   <p>Turn an existing <span class="sb-mono">.satomplugin</span> (a SATOM export, or a package built elsewhere) into a project you can edit. Views, widgets and apps are accepted; <span class="sb-mono">code</span> plugins are not.</p>
+  <p class="sb-help">Already in your SATOM? <a href="{{ url_for('projects.from_satom') }}">Open it from SATOM</a> instead: no file to download.</p>
   <p class="sb-help">The package is read, not trusted: its format and member hashes are checked, a signature is dropped (the Builder signs with this installation's publisher key when it builds the package again).</p>
   <form method="post" action="{{ url_for('projects.adopt') }}" enctype="multipart/form-data" class="row g-3" style="max-width: 640px">
     {{ m.csrf() }}

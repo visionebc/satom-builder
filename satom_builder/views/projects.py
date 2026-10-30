@@ -1,4 +1,5 @@
-"""Project pages: list, new, adopt a package, overview, settings, bump, delete."""
+"""Project pages: list, new, adopt a package, open from SATOM, overview, settings, bump,
+delete."""
 from __future__ import annotations
 
 import functools
@@ -8,6 +9,7 @@ from flask import (Blueprint, abort, flash, g, jsonify, redirect, render_templat
                    url_for)
 
 from .. import db, kinds, package, profiles, projects, targets
+from ..satom_client import SatomError
 from ..security import audit, login_required
 
 bp = Blueprint("projects", __name__, url_prefix="/projects")
@@ -160,6 +162,81 @@ def adopt():
                                              if parsed["signed"] else ""), "success")
                 return redirect(url_for("projects.overview", pid=pid))
     return render_template("projects/adopt.html", targets=tlist)
+
+
+def _mine_by_slug(conn, user_id: int) -> dict:
+    """``{(kind, slug): project id}`` of this author's projects (the newest wins)."""
+    rows = conn.execute("SELECT id, kind, slug FROM projects WHERE owner_id = ? ORDER BY id",
+                        (user_id,)).fetchall()
+    return {(r["kind"], r["slug"]): r["id"] for r in rows}
+
+
+def _open_from_satom(conn, t, wanted: list[tuple[str, str]]) -> tuple[list, list]:
+    """Adopt each ``(kind, slug)`` from target *t* -> ``(opened, failed)``."""
+    opened, failed = [], []
+    with targets.client(conn, t, g.user.id) as cli:
+        for kind, slug in wanted:
+            try:
+                parsed = package.read_for_adopt(cli.plugin_package(kind, slug))
+                pid = projects.adopt(conn, g.user.id, parsed, target_id=t["id"])
+            except SatomError as exc:
+                failed.append((slug, exc.message))
+                continue
+            except (package.PackageError, projects.ShapeError) as exc:
+                failed.append((slug, getattr(exc, "message", None) or str(exc)))
+                continue
+            m = parsed["manifest"]
+            audit("project.adopt", m["slug"], id=pid, kind=m["kind"], version=m["version"],
+                  source="satom", target=t["id"])
+            opened.append((slug, pid))
+    return opened, failed
+
+
+@bp.route("/from-satom", methods=["GET", "POST"])
+@login_required
+def from_satom():
+    """Open what a SATOM target already has (its Plugin Studio apps and Report
+    Studio plugins) as projects (contract section 21). Each one is fetched as
+    SATOM exports it and adopted like an uploaded package."""
+    conn = db.get()
+    linked = [t for t in targets.list_targets(conn) if targets.has_token(conn, g.user.id, t["id"])]
+    raw = request.values.get("target_id") or ""
+    t = next((x for x in linked if str(x["id"]) == raw), linked[0] if linked else None)
+    listing, error = None, ""
+    if t is not None:
+        try:
+            with targets.client(conn, t, g.user.id) as cli:
+                listing = cli.plugins()
+        except SatomError as exc:
+            error = exc.message
+    mine = _mine_by_slug(conn, g.user.id)
+    items = []
+    for it in (listing or {}).get("items") or []:
+        if not isinstance(it, dict):
+            continue
+        kind, slug = str(it.get("kind") or ""), str(it.get("slug") or "")
+        items.append(dict(it, kind=kind, slug=slug, project=mine.get((kind, slug)),
+                          key=f"{kind}:{slug}"))
+    if request.method == "POST" and t is not None and listing is not None:
+        can = {i["key"] for i in items if i.get("openable") and not i["project"]}
+        picked = (sorted(can) if request.form.get("all") else
+                  [k for k in request.form.getlist("item") if k in can])
+        if not picked:
+            flash("Nothing to open: pick what is not in the Builder yet.", "warning")
+        else:
+            opened, failed = _open_from_satom(conn, t, [tuple(k.split(":", 1)) for k in picked])
+            if opened:
+                flash(f"Opened {len(opened)} as project(s): "
+                      + ", ".join(s for s, _ in opened) + ".", "success")
+            for slug, msg in failed:
+                flash(f"{slug}: {msg}", "danger")
+            if len(opened) == 1 and not failed:
+                return redirect(url_for("projects.overview", pid=opened[0][1]))
+        return redirect(url_for("projects.from_satom", target_id=t["id"]))
+    return render_template("projects/from_satom.html", targets=linked, target=t,
+                           items=items, error=error,
+                           can_open=sum(1 for i in items if i.get("openable")
+                                        and not i["project"]))
 
 
 @bp.get("/<int:pid>")

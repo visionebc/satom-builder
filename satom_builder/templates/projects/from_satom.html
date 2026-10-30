@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Open from SATOM — SATOM Builder{% endblock %}
+{% block content %}
+<div class="fw-page-header">
+  <h1 class="fw-page-title"><i class="bi bi-cloud-arrow-down me-2"></i>Open from SATOM</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.adopt') }}"><i class="bi bi-box-arrow-in-down me-1"></i>Adopt a package file</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('projects.index') }}">Projects</a>
+  </div>
+</div>
+<div class="fw-card"><div class="fw-card-body">
+  <p class="mb-2">The Plugin Studio apps and Report Studio plugins a SATOM target already has. Opening one fetches it as SATOM exports it (no secrets, unsigned) and makes it a project you can edit, check and send back.</p>
+  {% if not targets %}
+  <p class="mb-0">You have no token for any SATOM target yet. <a href="{{ url_for('me.tokens') }}">Add one under My tokens</a>.</p>
+  {% else %}
+  <form method="get" action="{{ url_for('projects.from_satom') }}" class="d-flex flex-wrap gap-2 align-items-end">
+    <div><label class="form-label" for="fs-target">SATOM target</label>
+      <select class="form-select form-select-sm" id="fs-target" name="target_id">
+        {% for t in targets %}<option value="{{ t.id }}" {{ 'selected' if target and t.id == target.id }}>{{ t.name }}</option>{% endfor %}
+      </select></div>
+    <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Show</button>
+  </form>
+  {% endif %}
+</div></div>
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% elif target %}
+<form method="post" action="{{ url_for('projects.from_satom') }}" class="fw-card" id="sb-from-satom">
+  {{ m.csrf() }}
+  <input type="hidden" name="target_id" value="{{ target.id }}">
+  <div class="fw-card-body d-flex flex-wrap gap-2 align-items-center">
+    <span class="sb-help" aria-live="polite">{{ items|length }} on {{ target.name }} · {{ can_open }} not in the Builder yet</span>
+    <button class="btn btn-sm btn-outline-secondary ms-auto" type="submit" name="open" value="1" {{ 'disabled' if not can_open }}>Open selected</button>
+    <button class="btn btn-sm btn-fw-primary" type="submit" name="all" value="1" {{ 'disabled' if not can_open }}><i class="bi bi-cloud-arrow-down me-1"></i>Open all {{ can_open }}</button>
+  </div>
+  {% if items %}
+  <div class="table-responsive">
+  <table class="table fw-table mb-0 align-middle">
+    <thead><tr><th scope="col"><span class="visually-hidden">Pick</span></th><th>Name</th><th>In the Builder</th><th>Kind</th><th>Version</th><th>Status in SATOM</th><th>Slug</th></tr></thead>
+    <tbody>
+    {% for it in items %}
+      <tr>
+        <td>{% if it.openable and not it.project %}<input class="form-check-input" type="checkbox" name="item" value="{{ it.key }}" id="fs-{{ loop.index }}" aria-label="Open {{ it.name }}">{% endif %}</td>
+        <td>{% if it.icon %}<i class="bi {{ it.icon }} me-1"></i>{% endif %}{% if it.openable and not it.project %}<label for="fs-{{ loop.index }}">{{ it.name }}</label>{% else %}{{ it.name }}{% endif %} {{ m.about(it.description) }}{% if it.template %} <span class="fw-badge fw-badge-secondary">template</span>{% endif %}</td>
+        <td>{% if it.project %}<a href="{{ url_for('projects.overview', pid=it.project) }}">Open project</a>{% elif it.openable %}<span class="sb-help">not yet</span>{% else %}<span class="sb-help">{{ it.why or 'The Builder cannot open it.' }}</span>{% endif %}</td>
+        <td>{{ m.kind_badge(it.kind) }}</td>
+        <td class="sb-mono">{{ it.version or '—' }}</td>
+        <td>{{ it.status or '—' }}</td>
+        <td class="sb-mono">{{ it.slug }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="fw-card-body"><p class="mb-0">This target has no Plugin Studio app or Report Studio plugin yet.</p></div>
+  {% endif %}
+</form>
+{% endif %}
+{% endblock %}

@@ -32,6 +32,7 @@ SCOPES = {
     ("POST", "/publishers"): "admin",
     ("GET", "/library"): "read",
     ("GET", "/data"): "read",
+    ("GET", "/plugins"): "read",
 }
 _LIB_PART = re.compile(r"^[0-9A-Za-z._-]{1,40}$")
 EXTRA = {
@@ -39,7 +40,11 @@ EXTRA = {
     ("POST", "/import"): "the token's owner must be a SATOM super-admin",
     ("POST", "/publishers"): "the token's owner must be a SATOM super-admin",
     ("GET", "/data"): "the token's owner must be allowed to author in Plugin Studio",
+    ("GET", "/plugins"): "the token's owner must be allowed to author in Plugin Studio",
 }
+#: what the Builder opens from a target (contract section 21)
+PLUGIN_KINDS = ("app", "view", "widget")
+_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,119}$")
 
 
 class Answer:
@@ -340,6 +345,33 @@ class SatomClient:
         if not isinstance(j, dict) or j.get("format") != "satom.builder-data/1":
             raise SatomError("SATOM's data answer has an unknown format.", "satom_bad_answer", 502)
         return j
+
+    # -- contract section 21: what the target already has -------------------
+    def plugins(self) -> dict:
+        """The plugins and apps SATOM has (``satom.builder-plugins/1``), each
+        with ``openable`` and, when not, ``why``."""
+        try:
+            j = self._json(self._request("GET", "/plugins"))
+        except SatomError as exc:
+            # /builder/plugins itself never answers 404: a 404 is a SATOM without it
+            if exc.status == 404:
+                raise SatomError(f"{self.host} runs a SATOM that cannot list its plugins for "
+                                 "the Builder: it needs SATOM 4.7.0 or later. Export the "
+                                 "package in SATOM and adopt the file instead.",
+                                 "no_plugins_api", 409) from None
+            raise
+        if not isinstance(j, dict) or j.get("format") != "satom.builder-plugins/1" \
+                or not isinstance(j.get("items"), list):
+            raise SatomError("SATOM's plugin list has an unknown format.", "satom_bad_answer",
+                             502)
+        return j
+
+    def plugin_package(self, kind: str, slug: str) -> bytes:
+        """One plugin or app as SATOM exports it: an unsigned ``.satomplugin``."""
+        if kind not in PLUGIN_KINDS or not _SLUG.match(slug or ""):
+            raise SatomError("Malformed kind or slug.", "bad_request", 400)
+        route = "/plugins/%s/%s/package" % (kind, quote(slug, safe=""))
+        return self._request("GET", route, limit=MAX_PACKAGE).content
 
     def register_publisher(self, label: str, public_key_b64: str) -> dict:
         return self._json(self._request("POST", "/publishers",

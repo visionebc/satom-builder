@@ -6,6 +6,17 @@ All notable changes to SATOM Builder are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Open from SATOM** (request: "I still don't see SATOM's plugins in the
+  Builder; they should all be there"). *Projects › Open from SATOM* lists
+  what the target SATOM already has -- its Plugin Studio apps and Report
+  Studio plugins -- says which ones are already your projects, and opens
+  the others as projects in one click (*Open selected*, *Open all*): each
+  is fetched as SATOM exports it (unsigned, connections without secrets)
+  and adopted like an uploaded package. What the Builder cannot open is
+  listed with the reason (a script app, a code plugin, a Report Studio
+  plugin when your SATOM account is not a super-admin). Needs SATOM 4.7.0
+  (contract section 21); an older SATOM says so and *Adopt a package*
+  still takes the exported file.
 - **Sign-in tab for apps** (request: "this part must also be registered in the
   Builder"). An app can carry its own **sign-in** in SATOM -- a page for
   people without a SATOM console account who see that app and nothing else
